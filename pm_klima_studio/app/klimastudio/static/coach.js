@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const THEMA = { heizen: "Heizen", lueften: "Lüften", feuchte: "Feuchte", co2: "CO2", heizplan: "Heizplan", energie: "Energie", wartung: "Wartung", sommer: "Sommer" };
+  const THEMA = { heizen: "Heizen", lueften: "Lüften", feuchte: "Feuchte", co2: "CO2", heizplan: "Heizplan", energie: "Energie", wartung: "Wartung", sommer: "Sommer", ki: "KI" };
   const PRIO = { 1: "dringend", 2: "wichtig", 3: "Hinweis" };
 
   const st = {
@@ -11,6 +11,7 @@
     lauf: null,       // laufende Anfrage (Promise)
     ergebnis: null,   // angezeigter KI-Lauf
     ergebnisFehler: null,
+    hinweis: null,    // z. B. „Analyse läuft bereits“ (409 laeuft)
   };
 
   const A = () => window.KSApp;
@@ -18,6 +19,7 @@
   const aktiv = () => A().S.tab === "coach";
   const fmtIso = iso => { const t = Date.parse(iso); return isNaN(t) ? esc(iso || "–") : esc(A().fmtDate(t)); };
   const raumName = slug => slug ? A().roomName(slug) : null;
+  const kiEntitaet = () => { const i = A().S.info; return (i && i.coach && i.coach.ki_entitaet) || null; };
 
   async function render(main) {
     if (!st.data) main.innerHTML = `<div class="bar"><h2 class="grow">Klima-Coach</h2></div><div class="loading">Hinweise werden ermittelt …</div>`;
@@ -45,6 +47,7 @@
       <section class="co-sec"><h3 class="sec-title">KI-Coach</h3>
         <div class="card glass ki-card">
           <p class="m0">Auf Wunsch wertet ein KI-Dienst den aktuellen Lagebericht aus und ergänzt die lokalen Hinweise. Vorschläge werden nie automatisch ausgeführt.</p>
+          <p class="small muted m0">KI-Dienst: ${esc(kiEntitaet() || "nicht festgelegt")}</p>
           <div class="ki-actions"><button class="linkbtn" id="ki-was">Was wird übermittelt?</button><span class="grow"></span>
             <button class="btn primary" id="ki-start">Analyse anfordern</button></div>
           <div id="ki-zustand"></div>
@@ -80,9 +83,13 @@
       </div></article>`;
   }
 
+  const MODUS = { auto: "Auto", heat: "Hand", off: "Aus" };
+
   function massnahmeText(m) {
     if (!m || m.typ !== "steuerung") return "";
-    const teile = [];
+    if (m.aktion === "modus") return MODUS[m.modus] ? `<div class="small muted">Vorschlag: Betriebsart ${esc(MODUS[m.modus])}</div>` : "";
+    if (m.aktion === "zurueck") return `<div class="small muted">Vorschlag: zurück zum Plan</div>`;
+    const teile = m.aktion === "boost" ? ["Boost"] : [];
     if (typeof m.temperatur === "number") teile.push(`${A().num(m.temperatur)} °C`);
     if (typeof m.dauer === "number") teile.push(m.dauer === 0 ? "dauerhaft" : m.dauer % 60 === 0 ? `${m.dauer / 60} h` : `${m.dauer} min`);
     return teile.length ? `<div class="small muted">Vorschlag: ${esc(teile.join(", "))}</div>` : "";
@@ -114,7 +121,7 @@
       if (raum && info && !info.schedule) { A().toast("Für diesen Raum ist kein Heizplan hinterlegt.", true); return; }
       location.hash = raum ? `#/heizplan/${encodeURIComponent(raum)}` : "#/heizplan";
     } else if (m.typ === "steuerung") {
-      A().prefill = raum ? { raum, temperatur: m.temperatur, dauer: m.dauer, aktion: m.aktion } : null;
+      A().prefill = raum ? { raum, temperatur: m.temperatur, dauer: m.dauer, aktion: m.aktion, modus: m.modus } : null;
       location.hash = raum ? `#/steuerung/${encodeURIComponent(raum)}` : "#/steuerung";
     }
   }
@@ -151,6 +158,8 @@
   async function analyse() {
     if (st.lauf) return;
     st.ergebnisFehler = null;
+    st.hinweis = null;
+    // Kein clientseitiges Zeitlimit: der Server wartet bis zu 180 s auf den KI-Dienst.
     st.lauf = A().api("coach/ki", { method: "POST" });
     zeichneKi();
     try {
@@ -158,13 +167,21 @@
       st.ergebnis = data;
       if (data && data.fehler) A().toast("Die Auswertung konnte nicht vollständig verarbeitet werden.", true);
       else A().toast("Die Analyse liegt vor.");
-      try { st.verlauf = (await A().api("coach/ki")).data || []; } catch (_) { /* Verlauf bleibt */ }
     } catch (e) {
-      st.ergebnisFehler = e.message;
-      A().toast(e.message, true);
+      if (e.status === 409 && e.data && e.data.code === "laeuft") {
+        // Ein anderer Lauf (z. B. aus einem zweiten Fenster) ist noch aktiv
+        st.ergebnisFehler = null;
+        st.hinweis = e.message;
+        A().toast(e.message);
+      } else {
+        st.ergebnisFehler = e.message;
+        A().toast(e.message, true);
+      }
     } finally {
       st.lauf = null;
     }
+    // Auch fehlgeschlagene Läufe werden serverseitig gespeichert
+    try { st.verlauf = (await A().api("coach/ki")).data || []; } catch (_) { /* Verlauf bleibt */ }
     if (aktiv()) zeichneKi();
   }
 
@@ -174,8 +191,9 @@
     const btn = document.getElementById("ki-start");
     btn.disabled = !!st.lauf;
     btn.textContent = st.lauf ? "Analyse läuft …" : "Analyse anfordern";
-    z.innerHTML = st.lauf ? `<div class="infobox small"><span class="spinner" aria-hidden="true"></span>Die Auswertung kann bis zu zwei Minuten dauern.</div>`
-      : st.ergebnisFehler ? `<div class="errbox small">${esc(st.ergebnisFehler)}</div>` : "";
+    z.innerHTML = st.lauf ? `<div class="infobox small"><span class="spinner" aria-hidden="true"></span>Die Auswertung kann bis zu drei Minuten dauern. Sie können den Reiter währenddessen verlassen.</div>`
+      : st.ergebnisFehler ? `<div class="errbox small">${esc(st.ergebnisFehler)}</div>`
+      : st.hinweis ? `<div class="infobox small">${esc(st.hinweis)}</div>` : "";
     zeichneErgebnis();
     zeichneVerlauf();
   }
@@ -209,7 +227,7 @@
     box.querySelectorAll(".rep-item").forEach(b => b.addEventListener("click", async () => {
       try {
         const { data } = await A().api("coach/ki/" + encodeURIComponent(b.dataset.id));
-        st.ergebnis = data; st.ergebnisFehler = null;
+        st.ergebnis = data; st.ergebnisFehler = null; st.hinweis = null;
         if (!aktiv()) return;
         zeichneKi();
         const e = document.getElementById("ki-ergebnis");

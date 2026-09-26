@@ -84,17 +84,41 @@
     planTimer();
   }
 
+  // Vorschlag des Coachs vorbelegen bzw. markieren – nie selbst ausführen.
+  // aktion: overlay (Standard) | boost | zurueck | modus (mit Feld modus)
   function uebernehmeVorgabe(pf) {
     const r = st.data.raeume[pf.raum];
     const c = ctlFor(pf.raum, r, true);
-    if (typeof pf.temperatur === "number") {
-      const t = klemme(r, pf.temperatur);
-      if (r.modus === "heat") c.hand = t; else c.temp = t;
+    const aktion = ["overlay", "boost", "zurueck", "modus"].includes(pf.aktion) ? pf.aktion : "overlay";
+    c.vorschlagModus = null;
+    if (aktion === "modus") {
+      c.fokus = "modus";
+      if (["auto", "heat", "off"].includes(pf.modus)) c.vorschlagModus = pf.modus;
+    } else if (aktion === "zurueck") {
+      c.fokus = "zurueck";
+    } else if (aktion === "boost") {
+      c.fokus = "boost";
+    } else {
+      if (typeof pf.temperatur === "number") {
+        const t = klemme(r, pf.temperatur);
+        if (r.modus === "heat") c.hand = t; else c.temp = t;
+      }
+      if (pf.dauer === null || typeof pf.dauer === "number") c.dauer = pf.dauer;
+      c.geaendert = true;
+      c.fokus = "overlay";
     }
-    if (pf.dauer === null || typeof pf.dauer === "number") c.dauer = pf.dauer;
-    c.geaendert = true;
-    c.fokus = pf.aktion === "boost" ? "boost" : "overlay";
-    A().toast("Die Werte des Coachs sind vorbelegt. Bitte prüfen und bestätigen.");
+    let text = "Die Werte des Coachs sind vorbelegt. Bitte prüfen und bestätigen.";
+    if (aktion === "modus" && c.vorschlagModus) {
+      const ziel = (MODI.find(x => x.m === c.vorschlagModus) || {}).label;
+      text = c.vorschlagModus === r.modus ? `Der Raum ist bereits im Modus ${ziel}.` : `Vorschlag des Coachs: Betriebsart ${ziel}. Bitte prüfen und selbst umschalten.`;
+    } else if (aktion === "zurueck") {
+      text = r.overlay_bis || r.boost_bis ? "Vorschlag des Coachs: Zurück zum Plan. Bitte prüfen und bestätigen." : "Der Raum folgt bereits dem Plan.";
+    } else if (aktion === "boost") {
+      text = "Vorschlag des Coachs: Boost. Bitte Dauer wählen.";
+    } else if (r.modus === "off") {
+      text = "Der Raum ist ausgeschaltet. Eine vorübergehende Änderung ist nur im Modus Auto möglich.";
+    }
+    A().toast(text);
   }
 
   function klemme(r, t) {
@@ -148,11 +172,12 @@
     if (hp.vorhanden === false) {
       hinweise += `<div class="warnbox"><p class="m0">Die Freigabe-Entität <b>${esc(hp.entitaet)}</b> ist in Home Assistant nicht vorhanden. Klima Studio kann sie als Helfer anlegen.</p>
         <div class="actions left"><button class="btn primary" id="hp-einrichten">Einrichten</button></div></div>`;
-    } else if (hp.verknuepft === false || hp.verknuepft == null) {
-      hinweise += `<div class="infobox"><p class="m0">${hp.verknuepft === false
-        ? "Die Freigabe ist in der Integration offenbar nicht eingetragen. Die Umschaltung hat daher keine Wirkung auf die Heizung."
-        : "Ob die Freigabe in der Integration eingetragen ist, lässt sich derzeit nicht feststellen."}
+    } else if (hp.verknuepft === false) {
+      hinweise += `<div class="warnbox"><p class="m0">Die Freigabe ist in der Integration offenbar nicht eingetragen. Die Umschaltung auf Sommer hat daher keine Wirkung auf die Heizung.
         Tragen Sie die Entität einmalig ein:</p><p class="m0 small">${anleitung}</p></div>`;
+    } else if (hp.verknuepft == null) {
+      hinweise += `<details class="hp-hint small muted"><summary>Die Verknüpfung mit der Integration wird im Sommerbetrieb geprüft.</summary>
+        <p class="m0">Falls noch nicht geschehen, tragen Sie die Freigabe einmalig in der Integration ein: ${anleitung}</p></details>`;
     }
     if (hp.aktiv === false) {
       const heizend = raeume.filter(([, r]) => r.modus === "heat").map(([, r]) => r.name);
@@ -223,9 +248,9 @@
     return s + "</svg>";
   }
 
-  function seg(id, items, aktuell, gesperrt) {
+  function seg(id, items, aktuell, gesperrt, vorschlag) {
     return `<div class="seg" id="${esc(id)}" role="group">${items.map(x =>
-      `<button type="button" data-v="${esc(x.v)}" class="${x.v === aktuell ? "active" : ""}" aria-pressed="${x.v === aktuell}" ${gesperrt ? "disabled" : ""}>${esc(x.label)}</button>`).join("")}</div>`;
+      `<button type="button" data-v="${esc(x.v)}" class="${x.v === aktuell ? "active" : ""}${x.v === vorschlag && x.v !== aktuell ? " vorschlag" : ""}" aria-pressed="${x.v === aktuell}" ${x.v === vorschlag && x.v !== aktuell ? 'title="Vorschlag des Coachs"' : ""} ${gesperrt ? "disabled" : ""}>${esc(x.label)}</button>`).join("")}</div>`;
   }
 
   function bindHp() {
@@ -263,7 +288,9 @@
   }
 
   function zeichneHp() {
-    document.getElementById("hp-card").innerHTML = hpHtml(st.data.heizperiode, Object.entries(st.data.raeume || {}));
+    const card = document.getElementById("hp-card");
+    card.classList.remove("busy");
+    card.innerHTML = hpHtml(st.data.heizperiode, Object.entries(st.data.raeume || {}));
     bindHp();
   }
 
@@ -343,11 +370,11 @@
       teil = `<p class="small muted m0">Der Raum ist ausgeschaltet. Ein Boost heizt trotzdem für die gewählte Dauer.</p>`;
     }
     return kopf + (z.length ? `<div class="ctl-status">${z.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : "") + plan +
-      `<div class="ctl-block"><div class="lbl">Betriebsart</div>${seg("seg-" + slug, MODI.map(x => ({ v: x.m, label: x.label })), r.modus, false)}</div>
+      `<div class="ctl-block ${c.fokus === "modus" ? "hl" : ""}"><div class="lbl">Betriebsart</div>${seg("seg-" + slug, MODI.map(x => ({ v: x.m, label: x.label })), r.modus, false, c.fokus === "modus" ? c.vorschlagModus : null)}</div>
       ${teil}
-      <div class="ctl-block ${c.fokus === "boost" ? "hl" : ""}"><div class="lbl">Boost auf ${grad(r.max_temp)}</div>
+      <div class="ctl-block ${c.fokus === "boost" || c.fokus === "zurueck" ? "hl" : ""}"><div class="lbl">Boost auf ${grad(r.max_temp)}</div>
         <div class="ctl-row wrap">${BOOST.map(b => `<button class="btn" data-a="boost" data-d="${b}">${b} min</button>`).join("")}
-        ${r.overlay_bis || r.boost_bis ? `<span class="grow"></span><button class="btn ghost" data-a="zurueck">Zurück zum Plan</button>` : ""}</div></div>`;
+        ${r.overlay_bis || r.boost_bis ? `<span class="grow"></span><button class="btn ${c.fokus === "zurueck" ? "vorschlag" : "ghost"}" data-a="zurueck">Zurück zum Plan</button>` : ""}</div></div>`;
   }
 
   function dauerText(min) {
@@ -408,7 +435,7 @@
       const { data } = await A().api("steuerung/" + encodeURIComponent(slug), { method: "POST", body });
       if (data && data.raum) st.data.raeume[slug] = data.raum;
       const c = st.ctl[slug];
-      if (c) { c.geaendert = false; c.fokus = null; }
+      if (c) { c.geaendert = false; c.fokus = null; c.vorschlagModus = null; }
       A().toast(meldung);
     } catch (e) {
       A().toast(e.message, true);
@@ -417,7 +444,7 @@
     }
     if (!aktiv()) return;
     const neu = cardEl(slug);
-    if (neu) { neu.innerHTML = cardHtml(slug, st.data.raeume[slug]); bindCard(slug); }
+    if (neu) { neu.classList.remove("busy"); neu.innerHTML = cardHtml(slug, st.data.raeume[slug]); bindCard(slug); }
     if (body.aktion === "modus" && st.data.heizperiode && st.data.heizperiode.aktiv === false) zeichneHp();
   }
 
