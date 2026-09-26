@@ -101,6 +101,10 @@ async def test_automatic_switches_only_on_change(studio, fake):
     await studio.heizperiode.pruefen()
     assert len(schaltungen(fake)) == 1
     assert fake.extra[HP][0] == "off"
+    abw = (await studio.heizperiode.status())["abweichung"]
+    assert (abw["ist"], abw["soll"], abw["ausstehend"]) == ("off", "on", False)
+    assert abw["seit"]
+    assert abw["winterschutz_ab"]
     # Neue Entscheidung (warm) -> Helfer ist schon aus, kein Schreiben nötig
     setze_tagesmittel(fake, studio, [18] * 7)
     assert (await studio.heizperiode.pruefen())["aktiv"] is False
@@ -212,10 +216,13 @@ async def test_mode_change_switches_immediately(app_client, fake, studio):
     assert d["zustand"] == "off"
     assert d["entscheidung"] == {"aktiv": False, "grund": "Manuell auf Sommer gestellt."}
     assert schaltungen(fake) == [("input_boolean", "turn_off", {"entity_id": HP})]
-    # Stündliche Prüfung im festen Modus schreibt nicht erneut
-    helfer(fake, "on")
+    # Feste Modi werden bei jeder Prüfung durchgesetzt, aber nur bei Abweichung geschrieben
     await studio.heizperiode.pruefen()
     assert len(schaltungen(fake)) == 1
+    helfer(fake, "on")
+    await studio.heizperiode.pruefen()
+    assert len(schaltungen(fake)) == 2
+    assert fake.extra[HP][0] == "off"
     # Zurück auf Automatik: Entscheidung wird sofort angewendet (Moduswechsel)
     helfer(fake, "off")
     d = await (await app_client.post("/api/heizperiode", json={"modus": "automatik"})).json()
@@ -313,3 +320,124 @@ async def test_background_task_survives_errors(studio, fake, monkeypatch):
         await asyncio.sleep(0.02)
     assert calls >= 3
     await studio.heizperiode.stop()
+
+
+async def _seit_verschieben(studio, stunden):
+    z = await studio.store.einstellung("heizperiode_zustand")
+    z["abweichung_seit"] = (datetime.now(TZ) - timedelta(hours=stunden)).isoformat(timespec="seconds")
+    await studio.store.einstellung_setzen("heizperiode_zustand", z)
+
+
+async def test_winter_protection_after_six_hours(studio, fake):
+    helfer(fake, "off")
+    setze_tagesmittel(fake, studio, [8] * 7)
+    await studio.heizperiode.pruefen()
+    helfer(fake, "off")  # manuell in HA ausgeschaltet
+    await studio.heizperiode.pruefen()
+    await _seit_verschieben(studio, 5)
+    await studio.heizperiode.pruefen()
+    assert len(schaltungen(fake)) == 1
+    await _seit_verschieben(studio, 6.1)
+    res = await studio.heizperiode.pruefen()
+    assert "Winterschutz" in res["grund"]
+    assert fake.extra[HP][0] == "on"
+    assert len(schaltungen(fake)) == 2
+    ev = await studio.store.ereignisse("heizperiode")
+    assert "Winterschutz" in ev[0]["text"]
+    assert (await studio.heizperiode.status())["abweichung"] is None
+
+
+async def test_manual_summer_switch_is_respected_without_winter_protection(studio, fake):
+    helfer(fake, "on")
+    setze_tagesmittel(fake, studio, [18] * 7)
+    await studio.heizperiode.pruefen()
+    assert fake.extra[HP][0] == "off"
+    helfer(fake, "on")  # manuell eingeschaltet, Automatik sagt Sommer
+    await _seit_verschieben(studio, 0)
+    await studio.heizperiode.pruefen()
+    await _seit_verschieben(studio, 30)
+    await studio.heizperiode.pruefen()
+    assert fake.extra[HP][0] == "on"
+    abw = (await studio.heizperiode.status())["abweichung"]
+    assert abw["soll"] == "off"
+    assert abw["winterschutz_ab"] is None
+
+
+async def test_write_into_void_is_not_done(studio, fake):
+    helfer(fake, "unavailable")
+    setze_tagesmittel(fake, studio, [8] * 7)
+    await studio.heizperiode.pruefen()
+    assert len(schaltungen(fake)) == 1
+    assert (await studio.store.einstellung("heizperiode_zustand"))["angewendet"] is False
+    assert (await studio.store.ereignisse("heizperiode")) == []
+    status = await studio.heizperiode.status()
+    assert status["abweichung"]["ist"] == "unavailable"
+    assert status["abweichung"]["ausstehend"] is True
+    # Nächste Prüfung versucht es erneut; Entität wieder da (aus) -> wird eingeschaltet
+    await studio.heizperiode.pruefen()
+    assert len(schaltungen(fake)) == 2
+    helfer(fake, "off")
+    await studio.heizperiode.pruefen()
+    assert fake.extra[HP][0] == "on"
+    assert (await studio.store.einstellung("heizperiode_zustand"))["angewendet"] is True
+
+
+async def test_decision_bound_to_entity(studio, fake):
+    helfer(fake, "on")
+    # Gespeicherte Entscheidung einer anderen Entität wird verworfen
+    await studio.store.einstellung_setzen(
+        "heizperiode_zustand", {"entitaet": "input_boolean.alt", "entscheidung": False, "angewendet": True}
+    )
+    setze_tagesmittel(fake, studio, [14] * 7)  # Übergangsbereich
+    res = await studio.heizperiode.pruefen()
+    assert res["aktiv"] is True  # aktueller Zustand wird übernommen, nicht die fremde Entscheidung
+    assert schaltungen(fake) == []
+    z = await studio.store.einstellung("heizperiode_zustand")
+    assert (z["entitaet"], z["entscheidung"], z["angewendet"]) == (HP, True, True)
+
+
+async def test_failed_forced_apply_is_retried(app_client, fake, studio, monkeypatch):
+    from klimastudio.ha_client import HAError
+
+    helfer(fake, "on")
+    setze_tagesmittel(fake, studio, [8] * 7)
+    await studio.heizperiode.pruefen()
+    original = studio.client.call_service
+
+    async def kaputt(*a, **kw):
+        raise HAError("POST services/input_boolean/turn_off: HTTP 500", "500")
+
+    monkeypatch.setattr(studio.client, "call_service", kaputt)
+    resp = await app_client.post("/api/heizperiode", json={"modus": "sommer"})
+    assert resp.status == 502
+    assert "nächsten Prüfung" in (await resp.json())["fehler"]
+    assert fake.extra[HP][0] == "on"
+    assert (await studio.store.einstellung("heizperiode"))["modus"] == "sommer"
+    monkeypatch.setattr(studio.client, "call_service", original)
+    await studio.heizperiode.pruefen()
+    assert fake.extra[HP][0] == "off"
+    # Zurück auf Automatik scheitert ebenfalls -> ausstehender Zwangslauf wird nachgeholt
+    monkeypatch.setattr(studio.client, "call_service", kaputt)
+    resp = await app_client.post("/api/heizperiode", json={"modus": "automatik"})
+    assert resp.status == 502
+    assert (await studio.store.einstellung("heizperiode_zustand"))["angewendet"] is False
+    monkeypatch.setattr(studio.client, "call_service", original)
+    await studio.heizperiode.pruefen()
+    assert fake.extra[HP][0] == "on"
+
+
+async def test_einrichten_transition_zone_sets_on(app_client, fake, studio):
+    # Letztes Tagesmittel über der Mitte, aber kein eindeutiges Ende -> trotzdem Heizperiode
+    setze_tagesmittel(fake, studio, [14.5] * 7)
+    d = await (await app_client.post("/api/heizperiode/einrichten", json={})).json()
+    assert d["zustand"] == "on"
+    assert "Auto sofort ab" in d["hinweis"]
+    z = await studio.store.einstellung("heizperiode_zustand")
+    assert z == {"entitaet": HP, "entscheidung": True, "angewendet": True, "letzte_aenderung": z["letzte_aenderung"]}
+
+
+async def test_einrichten_without_data_sets_on(app_client, fake, studio):
+    fake.statistik_fehlt.add("sensor.aussentemperatur")
+    fake.sim.series.pop("sensor.aussentemperatur")
+    d = await (await app_client.post("/api/heizperiode/einrichten", json={})).json()
+    assert d["zustand"] == "on"

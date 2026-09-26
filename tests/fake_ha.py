@@ -10,7 +10,8 @@ Nachrichtenformate entsprechen HA 2026.9:
   recorder/statistics_during_period (components/recorder/websocket_api.py, start in ms),
   config/entity_registry/get, input_boolean/create,
   Dienste pm_heizung.* / climate.* mit Zustandsänderung, weather.get_forecasts und
-  ai_task.generate_data (nur mit ``?return_response``, Antwort ``{"changed_states", "service_response"}``).
+  ai_task.generate_data (nur mit Antwort: REST ``?return_response`` -> ``{"changed_states", "service_response"}``,
+  WS ``call_service`` mit ``return_response`` -> ``{"context", "response"}``).
 
 Start eigenständig:  python tests/fake_ha.py --port 8123
 """
@@ -410,27 +411,33 @@ class FakeHA:
         data = await request.json()
         if domain == "notify" and service in self.fail_notify:
             return web.json_response({"message": f"Service {domain}.{service} not found."}, status=400)
+        status, body = await self._dienst(domain, service, data, "return_response" in request.query)
+        if status != 200:
+            return web.json_response({"message": body}, status=status)
+        if "return_response" in request.query:
+            return web.json_response({"changed_states": [], "service_response": body})
+        return web.json_response([])
+
+    async def _dienst(self, domain: str, service: str, data: dict[str, Any], wants: bool) -> tuple[int, Any]:
+        """Dienstaufruf (REST und WS). Rückgabe ``(status, response | Fehlermeldung)``."""
         self.service_calls.append((domain, service, data))
-        wants = "return_response" in request.query
         if domain in ("weather", "ai_task"):
             if not wants:
-                return web.json_response(
-                    {"message": "Service call requires responses but caller did not ask for responses"}, status=400
-                )
+                return 400, "Service call requires responses but caller did not ask for responses"
             if domain == "weather":
                 eid = data.get("entity_id")
                 if eid not in self.extra:
-                    return web.json_response({"message": f"Entity {eid} not found"}, status=400)
-                return web.json_response({"changed_states": [], "service_response": {eid: {"forecast": self._forecast()}}})
+                    return 400, f"Entity {eid} not found"
+                return 200, {eid: {"forecast": self._forecast()}}
             if self.ki_delay:
                 await asyncio.sleep(self.ki_delay)
             if self.ki_fehler:
-                return web.json_response({"message": "AI task failed"}, status=500)
-            return web.json_response(
-                {"changed_states": [], "service_response": {"conversation_id": "abc", "data": self.ki_antwort}}
-            )
+                return 500, self.ki_fehler if isinstance(self.ki_fehler, str) else "AI task failed"
+            return 200, {"conversation_id": "abc", "data": self.ki_antwort}
+        if wants:
+            return 400, "Service does not support responses. Remove return_response from request."
         self._apply_service(domain, service, data)
-        return web.json_response([])
+        return 200, None
 
     def _forecast(self) -> list[dict[str, Any]]:
         if self.forecast is not None:
@@ -452,7 +459,9 @@ class FakeHA:
         """Wirkung der Dienste auf den Zustand (vereinfacht wie pm_heizung)."""
         eid = data.get("entity_id")
         if domain == "input_boolean" and service in ("turn_on", "turn_off") and eid in self.extra:
-            _, attrs = self.extra[eid]
+            state, attrs = self.extra[eid]
+            if state == "unavailable":  # wie HA: Dienstaufruf ohne Wirkung
+                return
             self.extra[eid] = ("on" if service == "turn_on" else "off", attrs)
             return
         if not isinstance(eid, str) or not eid.startswith("climate.pm_"):
@@ -506,6 +515,9 @@ class FakeHA:
             if msg.get("type") == "test/slow":
                 asyncio.get_running_loop().create_task(self._slow_reply(ws, msg))
                 continue
+            if msg.get("type") == "call_service":
+                asyncio.get_running_loop().create_task(self._ws_call_service(ws, msg))
+                continue
             try:
                 result = self.handle(msg)
                 await ws.send_json({"id": msg["id"], "type": "result", "success": True, "result": result})
@@ -523,6 +535,22 @@ class FakeHA:
                     }
                 )
         return ws
+
+    async def _ws_call_service(self, ws: web.WebSocketResponse, msg: dict[str, Any]) -> None:
+        """WS ``call_service`` (websocket_api/commands.py): Ergebnis ``{"context", "response"}``."""
+        status, body = await self._dienst(
+            msg["domain"], msg["service"], dict(msg.get("service_data") or {}), bool(msg.get("return_response"))
+        )
+        if ws.closed:
+            return
+        if status != 200:
+            code = "service_validation_error" if status == 400 else "home_assistant_error"
+            await ws.send_json({"id": msg["id"], "type": "result", "success": False, "error": {"code": code, "message": body}})
+            return
+        result: dict[str, Any] = {"context": {"id": "01TEST", "parent_id": None, "user_id": None}}
+        if msg.get("return_response"):
+            result["response"] = body
+        await ws.send_json({"id": msg["id"], "type": "result", "success": True, "result": result})
 
     async def _slow_reply(self, ws: web.WebSocketResponse, msg: dict[str, Any]) -> None:
         await asyncio.sleep(msg.get("delay", 0.3))

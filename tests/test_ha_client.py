@@ -25,6 +25,43 @@ async def test_rest_error(ha_client, fake):
     assert err.value.code == "400"
 
 
+async def test_call_service_with_response_uses_websocket(ha_client, fake):
+    resp = await ha_client.call_service(
+        "weather", "get_forecasts", {"entity_id": "weather.dwd_zuhause", "type": "daily"}, return_response=True
+    )
+    assert resp["weather.dwd_zuhause"]["forecast"]
+    msg = fake.ws_commands[-1]
+    assert {k: v for k, v in msg.items() if k != "id"} == {
+        "type": "call_service",
+        "domain": "weather",
+        "service": "get_forecasts",
+        "service_data": {"entity_id": "weather.dwd_zuhause", "type": "daily"},
+        "return_response": True,
+    }
+    fake.ki_fehler = "Rate limit exceeded"
+    with pytest.raises(HAError) as err:
+        await ha_client.call_service("ai_task", "generate_data", {"entity_id": "ai_task.x"}, return_response=True)
+    assert err.value.meldung == "Rate limit exceeded"
+    assert err.value.code == "home_assistant_error"
+
+
+async def test_call_service_timeout_is_passed_through(ha_client, fake):
+    fake.ki_delay = 0.5
+    with pytest.raises(HAError) as err:
+        await ha_client.call_service("ai_task", "generate_data", {"entity_id": "ai_task.x"}, return_response=True, timeout=0.1)
+    assert err.value.code == "timeout"
+    fake.ki_delay = 0
+    assert await ha_client.call_service("ai_task", "generate_data", {"entity_id": "ai_task.x"}, return_response=True, timeout=5)
+
+
+def test_ki_fehlertext():
+    from klimastudio.coach.ki import fehlertext
+
+    assert fehlertext(HAError("call_service: kaputt", "x", "kaputt")) == "Der KI-Dienst meldet: kaputt"
+    assert "180 Sekunden" in fehlertext(HAError("call_service: Zeitüberschreitung", "timeout"))
+    assert "HTTP" not in fehlertext(HAError("POST services/ai_task/generate_data: HTTP 500 boom", "500"))
+
+
 async def test_ws_auth_and_schedule_list(ha_client):
     items = await ha_client.schedule_list()
     assert {i["id"] for i in items} >= {"heizplan_wohnzimmer", "heizplan_badezimmer"}

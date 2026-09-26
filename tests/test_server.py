@@ -65,6 +65,53 @@ async def test_index_uses_ingress_path_and_security_headers(app_client):
     assert "https://" not in html
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs", "status"),
+    [
+        ("get", "/api/gibt_es_nicht", {}, 404),
+        ("get", "/api/uebersicht?bereich=1y", {}, 400),
+        ("post", "/api/heizperiode", {"json": {"modus": "winter"}}, 400),
+        ("post", "/api/steuerung/unbekannt", {"json": {}}, 404),
+        ("post", "/api/heizperiode/einrichten", {"json": {}}, 409),
+    ],
+)
+async def test_security_headers_on_errors(app_client, fake, method, path, kwargs, status):
+    fake.extra["input_boolean.pm_heizperiode"] = ("on", {})
+    resp = await getattr(app_client, method)(path, **kwargs)
+    assert resp.status == status
+    assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert resp.headers["Referrer-Policy"] == "same-origin"
+    assert resp.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.parametrize("path", ["/api/coach/ki", "/api/heizperiode/einrichten"])
+async def test_post_without_body_requires_json(app_client, fake, path):
+    for kwargs in ({}, {"data": "x=1", "headers": {"Content-Type": "application/x-www-form-urlencoded"}}):
+        resp = await app_client.post(path, **kwargs)
+        assert resp.status == 415, kwargs
+    assert [c for c in fake.service_calls if c[0] in ("ai_task", "input_boolean")] == []
+    assert [c for c in fake.ws_commands if c["type"] in ("input_boolean/create", "call_service")] == []
+
+
+async def test_steuerung_survives_heizperiode_error(app_client, studio, monkeypatch):
+    import sqlite3
+
+    from klimastudio.ha_client import HAError
+
+    for err in (sqlite3.OperationalError("database is locked"), HAError("recorder weg")):
+
+        async def kaputt(*a, _err=err, **kw):
+            raise _err
+
+        monkeypatch.setattr(studio.heizperiode, "status", kaputt)
+        resp = await app_client.get("/api/steuerung")
+        d = await resp.json()
+        assert resp.status == 200
+        assert d["heizperiode"] is None
+        assert d["raeume"]
+
+
 async def test_static_assets_have_no_external_hosts(app_client):
     for path in ("/static/app.js", "/static/charts.js", "/static/app.css"):
         resp = await app_client.get(path)

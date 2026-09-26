@@ -26,11 +26,16 @@ WS_MAX_MSG = 64 * 1024 * 1024
 
 
 class HAError(Exception):
-    """Fehler bei der Kommunikation mit Home Assistant."""
+    """Fehler bei der Kommunikation mit Home Assistant.
 
-    def __init__(self, message: str, code: str | None = None) -> None:
+    ``meldung`` enthält, falls vorhanden, die Fehlermeldung von HA im Klartext
+    (ohne technische Präfixe), z. B. aus einer WebSocket-Fehlerantwort.
+    """
+
+    def __init__(self, message: str, code: str | None = None, meldung: str | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.meldung = meldung
 
 
 class HAClient:
@@ -98,13 +103,21 @@ class HAClient:
         return_response: bool = False,
         timeout: float | None = None,
     ) -> Any:
-        """Dienst aufrufen. Mit ``return_response`` wird ``service_response`` zurückgegeben
-        (REST ``POST /api/services/<domain>/<service>?return_response``)."""
+        """Dienst aufrufen.
+
+        Ohne ``return_response`` über REST ``POST /api/services/<domain>/<service>``.
+        Mit ``return_response`` über WebSocket ``call_service`` (homeassistant/components/
+        websocket_api/commands.py); zurückgegeben wird ``result["response"]``. Fehler von HA
+        kommen so im Klartext an (``HAError.meldung``). ``entity_id`` steht in ``service_data``.
+        """
         if not return_response:
             return await self.rest("POST", f"services/{domain}/{service}", timeout=timeout, json=data)
-        result = await self.rest("POST", f"services/{domain}/{service}?return_response", timeout=timeout, json=data)
+        result = await self.ws_command(
+            {"type": "call_service", "domain": domain, "service": service, "service_data": data, "return_response": True},
+            timeout=timeout,
+        )
         if isinstance(result, dict):
-            return result.get("service_response")
+            return result.get("response")
         return None
 
     async def history_period_rest(
@@ -216,12 +229,15 @@ class HAClient:
                 continue
             except TimeoutError as err:
                 pending.pop(msg_id, None)
-                raise HAError(f"{payload.get('type')}: Zeitüberschreitung") from err
+                raise HAError(f"{payload.get('type')}: Zeitüberschreitung", "timeout") from err
             if not resp.get("success", False):
                 error = resp.get("error") or {}
+                meldung = error.get("message")
+                meldung = str(meldung).strip()[:500] if meldung else None
                 raise HAError(
-                    f"{payload.get('type')}: {error.get('message', 'unbekannter Fehler')}",
+                    f"{payload.get('type')}: {meldung or 'unbekannter Fehler'}",
                     error.get("code", "error"),
+                    meldung,
                 )
             return resp.get("result")
         raise HAError("unerreichbar")  # pragma: no cover

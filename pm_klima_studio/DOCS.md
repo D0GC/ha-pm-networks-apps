@@ -96,11 +96,13 @@ Die Sperre selbst setzt die Integration um. Klima Studio spricht dabei kein Ther
 ### Einmalige Einrichtung
 
 1. In Klima Studio: Reiter **Steuerung** → Karte **Heizperiode** → **Einrichten**. Klima Studio legt den Helfer
-   `input_boolean.pm_heizperiode` („PM Heizperiode“) an und setzt ihn auf den aktuellen Stand der Automatik.
-   Der Knopf erscheint nur, solange die Entität fehlt.
+   `input_boolean.pm_heizperiode` („PM Heizperiode“) an. In der Automatik steht er danach auf **an**, außer die
+   Tagesmittel zeigen eindeutig das Ende der Heizperiode. Der Knopf erscheint nur, solange die Entität fehlt.
 2. In Home Assistant: **Einstellungen → Geräte & Dienste → PM Klima → Konfigurieren**, bis zum Schritt **Sperre**.
 3. Dort als **Freigabe-Entität** `input_boolean.pm_heizperiode` auswählen und als **Sperrwirkung** „aus“ wählen.
 4. Speichern.
+
+Achtung: Steht die Freigabe beim Verknüpfen auf aus, schaltet die Integration Räume im Modus Auto sofort ab.
 
 Solange die Verknüpfung fehlt, hat das Umschalten keine Wirkung auf die Heizung. Klima Studio erkennt das im
 Sommerbetrieb am Sperrgrund der Integration und zeigt dann einen Hinweis mit dieser Anleitung.
@@ -113,8 +115,8 @@ nicht schalten. Die Modi Heizperiode und Sommer stehen dann nicht zur Verfügung
 | Modus | Wirkung |
 |---|---|
 | Automatik | Klima Studio entscheidet anhand der Außentemperatur (siehe unten). Standard. |
-| Heizperiode | Die Freigabe wird sofort und dauerhaft eingeschaltet. |
-| Sommer | Die Freigabe wird sofort und dauerhaft ausgeschaltet. |
+| Heizperiode | Die Freigabe wird sofort eingeschaltet und bei jeder Prüfung wieder eingeschaltet, falls sie aus steht. |
+| Sommer | Die Freigabe wird sofort ausgeschaltet und bei jeder Prüfung wieder ausgeschaltet, falls sie an steht. Vor dem Umschalten fragt die Karte nach. |
 
 ### Regel der Automatik
 
@@ -130,9 +132,14 @@ mindestens 12 Stunden vorliegen.
 Heizgrenze (5–20 °C), Hysterese (0–5 K) und die Anzahl der Tage (je 1–7) lassen sich in der Karte einstellen.
 Die Karte zeigt die Tagesmittel als Balken, die Entscheidung mit Begründung und den letzten Wechsel.
 
-Klima Studio prüft beim Start und danach stündlich. Die Freigabe wird nur geschaltet, wenn sich die Entscheidung
-ändert oder Sie den Modus wechseln. Schalten Sie den Helfer von Hand in Home Assistant um, bleibt das bestehen,
-bis die Automatik zu einer neuen Entscheidung kommt. Jede Umschaltung wird im Ereignisprotokoll vermerkt.
+Klima Studio prüft beim Start und danach stündlich. In der Automatik wird die Freigabe geschaltet, wenn sich die
+Entscheidung ändert oder Sie den Modus wechseln. Ein Schaltbefehl gilt erst als erledigt, wenn die Freigabe danach
+tatsächlich den neuen Zustand hat; sonst wiederholt Klima Studio ihn bei der nächsten Prüfung. Schalten Sie den
+Helfer von Hand in Home Assistant um, bleibt das bestehen, bis die Automatik zu einer neuen Entscheidung kommt.
+Die Karte zeigt die Abweichung als Hinweis an.
+
+**Winterschutz:** Steht die Freigabe länger als 6 Stunden auf aus, obwohl die Automatik Heizperiode ermittelt,
+schaltet Klima Studio sie wieder ein. Jede Umschaltung wird im Ereignisprotokoll vermerkt.
 
 ### Was im Sommer weiterheizt
 

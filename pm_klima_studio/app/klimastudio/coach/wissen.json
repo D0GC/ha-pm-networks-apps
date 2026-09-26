@@ -993,7 +993,7 @@
         ]
       },
       "titel": "Heizplan heizt in der Nacht",
-      "text": "Der Heizplan im Raum {raum.name} enthält einen Heizblock zwischen 1 und 4 Uhr. In dieser Zeit wird der Raum in der Regel nicht genutzt.",
+      "text": "Der Heizplan im Raum {raum.name} enthält zwischen 1 und 4 Uhr einen Heizblock mit mindestens 18 °C. In dieser Zeit wird der Raum in der Regel nicht genutzt.",
       "begruendung": "Nachts genügt eine abgesenkte Temperatur. Der Raum wird am Morgen rechtzeitig vor der Nutzung wieder aufgeheizt.",
       "massnahme": {
         "typ": "heizplan"

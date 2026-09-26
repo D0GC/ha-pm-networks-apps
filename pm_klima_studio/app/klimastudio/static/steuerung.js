@@ -34,16 +34,18 @@
   const num = (v, d) => A().num(v, d);
   const aktiv = () => A().S.tab === "steuerung";
 
+  // Rückgabe ist HTML-sicher (landet in innerHTML).
   function fmtZeit(iso) {
     if (!iso) return "–";
     const t = Date.parse(iso);
-    if (isNaN(t)) return String(iso);
+    if (isNaN(t)) return esc(String(iso));
     const heute = new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeZone: A().tz() }).format(new Date());
     const tag = new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeZone: A().tz() }).format(new Date(t));
     const uhr = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: A().tz() }).format(new Date(t));
-    return tag === heute ? `${uhr} Uhr` : `${A().fmtDate(t, false)}, ${uhr} Uhr`;
+    return esc(tag === heute ? `${uhr} Uhr` : `${A().fmtDate(t, false)}, ${uhr} Uhr`);
   }
-  const grad = v => v == null ? "–" : `${num(v)} °C`;
+  const grad = v => v == null ? "–" : `${esc(num(v))} °C`;
+  const WARN_VERKNUEPFEN = "Steht die Freigabe beim Verknüpfen auf aus, schaltet die Integration Räume im Modus Auto sofort ab.";
 
   // ------------------------------------------------------------------ Laden
   function stopTimer() { clearTimeout(st.timer); st.timer = null; }
@@ -163,11 +165,11 @@
 
   // ------------------------------------------------------------------ Heizperiode
   function hpHtml(hp, raeume) {
-    if (!hp) return `<div class="kicker">Heizperiode</div><p class="muted">Keine Daten zur Heizperiode verfügbar.</p>`;
+    if (!hp) return `<div class="kicker">Heizperiode</div><p class="muted">Der Status der Heizperiode ist derzeit nicht verfügbar. Die Raumsteuerung ist davon nicht betroffen.</p>`;
     const zustand = hp.aktiv === true ? "Heizperiode aktiv" : hp.aktiv === false ? "Sommerbetrieb" : "Zustand unbekannt";
     const zcls = hp.aktiv === true ? "heat" : hp.aktiv === false ? "auto" : "off";
     const e = hp.entscheidung || {};
-    const anleitung = `Einstellungen → Geräte &amp; Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → Freigabe-Entität: <b>${esc(hp.entitaet)}</b>`;
+    const anleitung = `Einstellungen → Geräte &amp; Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → Freigabe-Entität: <b>${esc(hp.entitaet)}</b>. ${esc(WARN_VERKNUEPFEN)}`;
     let hinweise = "";
     if (hp.vorhanden === false) {
       hinweise += `<div class="warnbox"><p class="m0">Die Freigabe-Entität <b>${esc(hp.entitaet)}</b> ist in Home Assistant nicht vorhanden. Klima Studio kann sie als Helfer anlegen.</p>
@@ -178,6 +180,21 @@
     } else if (hp.verknuepft == null) {
       hinweise += `<details class="hp-hint small muted"><summary>Die Verknüpfung mit der Integration wird im Sommerbetrieb geprüft.</summary>
         <p class="m0">Falls noch nicht geschehen, tragen Sie die Freigabe einmalig in der Integration ein: ${anleitung}</p></details>`;
+    }
+    const abw = hp.abweichung;
+    if (abw && hp.vorhanden !== false) {
+      const wort = z => z === "on" ? "an" : z === "off" ? "aus" : `nicht verfügbar (${z})`;
+      let text = `Die Freigabe steht auf ${esc(wort(abw.ist))}, ermittelt ist ${abw.soll === "on" ? "Heizperiode" : "Sommer"}.`;
+      if (abw.ausstehend) text += " Klima Studio schaltet sie bei der nächsten Prüfung um.";
+      else if (abw.ist === "on" || abw.ist === "off") {
+        text += ` Die manuelle Umschaltung in Home Assistant${abw.seit ? ` (seit ${fmtZeit(abw.seit)})` : ""} bleibt bestehen.`;
+        if (abw.soll === "on" && abw.ist === "off") {
+          text += abw.winterschutz_ab
+            ? ` Winterschutz: Steht die Freigabe weiter auf aus, schaltet Klima Studio die Heizperiode um ${fmtZeit(abw.winterschutz_ab)} wieder ein.`
+            : " Winterschutz: Steht die Freigabe länger als 6 Stunden auf aus, schaltet Klima Studio die Heizperiode wieder ein.";
+        }
+      }
+      hinweise += `<div class="warnbox small" id="hp-abweichung">${text}</div>`;
     }
     if (hp.aktiv === false) {
       const heizend = raeume.filter(([, r]) => r.modus === "heat").map(([, r]) => r.name);
@@ -199,7 +216,7 @@
           <dt>Außen aktuell</dt><dd>${grad(hp.aussen_aktuell)}</dd>
           <dt>Freigabe</dt><dd>${esc(hp.entitaet || "–")}${hp.zustand ? ` · ${hp.zustand === "on" ? "an" : "aus"}` : ""}</dd>
           <dt>Letzte Änderung</dt><dd>${fmtZeit(hp.letzte_aenderung)}</dd>
-          <dt>Nächste Prüfung</dt><dd>${hp.modus === "automatik" ? fmtZeit(hp.naechste_pruefung) : "keine, Modus fest eingestellt"}</dd>
+          <dt>Nächste Prüfung</dt><dd>${fmtZeit(hp.naechste_pruefung)}</dd>
         </dl>
         <figure class="hp-chart">${balken(hp)}<figcaption class="chart-legend">
           <span><i style="background:#F2B35C"></i>Heizgrenze ${grad(hp.heizgrenze)}</span>
@@ -257,8 +274,14 @@
     const card = document.getElementById("hp-card");
     const hp = st.data.heizperiode;
     if (!hp) return;
-    card.querySelectorAll("#hp-modus button").forEach(b => b.addEventListener("click", () => {
+    card.querySelectorAll("#hp-modus button").forEach(b => b.addEventListener("click", async () => {
       if (b.dataset.v === hp.modus) return;
+      if (b.dataset.v === "sommer") {
+        const ok = await A().modal("Auf Sommer umstellen?",
+          `<p>Im Sommerbetrieb schaltet die Integration alle Räume im Modus Auto ab. Räume im Modus Hand, Abweichungen und Boost heizen weiter.</p>`,
+          [{ label: "Abbrechen", value: false, cls: "ghost" }, { label: "Sommer einschalten", value: true, cls: "danger" }]);
+        if (!ok) return;
+      }
       hpSenden({ modus: b.dataset.v }, "Modus der Heizperiode geändert.");
     }));
     const det = document.getElementById("hp-set");
@@ -316,7 +339,7 @@
     const card = document.getElementById("hp-card");
     st.busy = true; sperre(card, true);
     try {
-      const { data } = await A().api("heizperiode/einrichten", { method: "POST" });
+      const { data } = await A().api("heizperiode/einrichten", { method: "POST", body: {} });
       st.data.heizperiode = data;
       if (aktiv()) zeichneHp();
       await A().modal("Freigabe angelegt", `<p>${esc(data.hinweis || "Die Freigabe-Entität wurde angelegt.")}</p>

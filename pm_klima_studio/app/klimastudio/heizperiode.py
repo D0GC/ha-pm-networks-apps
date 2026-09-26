@@ -4,6 +4,16 @@ Die App schaltet ausschließlich eine Freigabe-Entität (Standard
 ``input_boolean.pm_heizperiode``), die in der Integration PM Klima als
 ``freigabe_entitaet`` eingetragen ist. on = Heizperiode, off = Sommer.
 Thermostate werden nie direkt angesprochen.
+
+Schutz vor versehentlicher Sperre im Winter:
+
+* Feste Modi (heizperiode/sommer) werden bei jeder Prüfung durchgesetzt.
+* Automatik: Eine manuelle Umschaltung in HA wird respektiert und als
+  ``abweichung`` gemeldet. Steht die Freigabe länger als ``WINTERSCHUTZ_STUNDEN``
+  auf aus, obwohl die Automatik Heizperiode ermittelt, wird sie wieder
+  eingeschaltet (Winterschutz).
+* Ein Schreibbefehl gilt erst als erledigt, wenn der Zustand danach stimmt.
+* Die gespeicherte Entscheidung gilt nur für die Entität, zu der sie gehört.
 """
 
 from __future__ import annotations
@@ -38,9 +48,11 @@ MIN_STUNDEN = 12  # Mindestanzahl Stundenwerte für ein gültiges Tagesmittel
 INTERVALL = 3600
 MITTEL_TTL = 900
 BEREIT_WARTEN = 300
+WINTERSCHUTZ_STUNDEN = 6
 HINWEIS_EINRICHTEN = (
     "Die Entität {entitaet} wurde angelegt. Tragen Sie sie einmalig in der Integration PM Klima als Freigabe ein: "
-    "Einstellungen → Geräte & Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → freigabe_entitaet."
+    "Einstellungen → Geräte & Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → freigabe_entitaet. "
+    "Steht die Freigabe beim Verknüpfen auf aus, schaltet die Integration Räume im Modus Auto sofort ab."
 )
 
 
@@ -97,6 +109,26 @@ def _fmt(v: float) -> str:
     return f"{v:.1f}".replace(".", ",")
 
 
+def _fenster(tagesmittel: list[float | None], n: int) -> list[float] | None:
+    werte = tagesmittel[-n:] if len(tagesmittel) >= n else []
+    if len(werte) < n or any(v is None for v in werte):
+        return None
+    return [float(v) for v in werte if v is not None]
+
+
+def eindeutig(tagesmittel: list[float | None], einst: dict[str, Any]) -> bool | None:
+    """True = eindeutiger Beginn, False = eindeutiges Ende, None = weder noch (oder zu wenige Daten)."""
+    grenze = float(einst["heizgrenze"])
+    ende = grenze + float(einst["hysterese"])
+    start_w = _fenster(tagesmittel, int(einst["tage_start"]))
+    ende_w = _fenster(tagesmittel, int(einst["tage_ende"]))
+    if start_w is not None and all(v < grenze for v in start_w):
+        return True
+    if ende_w is not None and all(v >= ende for v in ende_w):
+        return False
+    return None
+
+
 def entscheide(
     tagesmittel: list[float | None],
     einst: dict[str, Any],
@@ -110,20 +142,12 @@ def entscheide(
     grenze = float(einst["heizgrenze"])
     ende = grenze + float(einst["hysterese"])
     n_start, n_ende = int(einst["tage_start"]), int(einst["tage_ende"])
-
-    def letzte(n: int) -> list[float] | None:
-        werte = tagesmittel[-n:] if len(tagesmittel) >= n else []
-        if len(werte) < n or any(v is None for v in werte):
-            return None
-        return [float(v) for v in werte if v is not None]
-
-    start_w = letzte(n_start)
-    ende_w = letzte(n_ende)
-    if start_w is None and ende_w is None:
+    if _fenster(tagesmittel, n_start) is None and _fenster(tagesmittel, n_ende) is None:
         return None, "Zu wenige Daten: Für die letzten Tage fehlen Tagesmittel der Außentemperatur."
-    if start_w is not None and all(v < grenze for v in start_w):
+    klar = eindeutig(tagesmittel, einst)
+    if klar is True:
         return True, f"Tagesmittel der letzten {n_start} Tage unter der Heizgrenze von {_fmt(grenze)} °C."
-    if ende_w is not None and all(v >= ende for v in ende_w):
+    if klar is False:
         return False, f"Tagesmittel der letzten {n_ende} Tage mindestens {_fmt(ende)} °C (Heizgrenze plus Hysterese)."
     if bisher is not None:
         return bisher, "Tagesmittel im Übergangsbereich, bisheriger Zustand bleibt."
@@ -279,20 +303,42 @@ class Heizperiode:
 
     # ------------------------------------------------------------- Schalten
 
-    async def _schalten(self, an_: bool, grund: str, modus: str, entitaet: str | None = None) -> None:
+    def _bisher(self, gespeichert: dict[str, Any]) -> bool | None:
+        """Gespeicherte Entscheidung, nur wenn sie zur aktuellen Freigabe-Entität gehört."""
+        if gespeichert.get("entitaet") != self.entitaet:
+            return None
+        bisher = gespeichert.get("entscheidung")
+        return bisher if isinstance(bisher, bool) else None
+
+    async def _zustand_lesen(self, eid: str) -> Any:
+        states = await self.client.get_states()
+        return next((s.get("state") for s in states if s.get("entity_id") == eid), None)
+
+    async def _schalten(self, an_: bool, grund: str, modus: str, entitaet: str | None = None) -> bool:
+        """Freigabe schalten. True nur, wenn der Zustand danach tatsächlich stimmt."""
         eid = entitaet or self.entitaet
         await self.client.call_service("input_boolean", "turn_on" if an_ else "turn_off", {"entity_id": eid})
+        nachher = await self._zustand_lesen(eid)
+        if _an_aus(nachher) is not an_:
+            _LOGGER.warning(
+                "Freigabe %s wurde nicht auf %s geschaltet (Zustand %s), neuer Versuch bei der nächsten Prüfung",
+                eid,
+                "on" if an_ else "off",
+                nachher,
+            )
+            return False
         text = f"Heizperiode {'eingeschaltet' if an_ else 'ausgeschaltet (Sommer)'}: {grund}"
         _LOGGER.info("%s (%s)", text, eid)
         await self.store.ereignis("heizperiode", None, text, {"aktiv": an_, "modus": modus, "entitaet": eid, "grund": grund})
-        zustand = await self._zustand_gespeichert()
-        zustand["letzte_aenderung"] = jetzt_iso()
-        await self.store.einstellung_setzen(ZUSTAND, zustand)
+        return True
 
     async def pruefen(self, erzwingen: bool = False, states: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-        """Auswerten und die Freigabe nur bei geänderter Entscheidung schalten.
+        """Auswerten und die Freigabe bei Bedarf schalten.
 
-        ``erzwingen`` (Moduswechsel): Entscheidung auch ohne Änderung anwenden.
+        Feste Modi werden immer durchgesetzt. In der Automatik wird geschrieben, wenn sich die
+        Entscheidung ändert, ein früherer Schreibbefehl noch aussteht (``angewendet`` falsch),
+        ``erzwingen`` gesetzt ist oder der Winterschutz greift. Eine manuelle Umschaltung in HA
+        wird sonst respektiert und als Abweichung vermerkt.
         """
         async with self._lock:
             einst = await self.einstellungen()
@@ -300,24 +346,56 @@ class Heizperiode:
             st = by_id.get(self.entitaet)
             ist = _an_aus(st.get("state")) if st else None
             gespeichert = await self._zustand_gespeichert()
-            bisher = gespeichert.get("entscheidung")
-            bisher = bisher if isinstance(bisher, bool) else None
+            bisher = self._bisher(gespeichert)
             aktiv, grund = await self._entscheidung(einst, bisher, ist)
             if aktiv is None or st is None:
                 if st is None:
                     grund = f"{grund} Die Freigabe-Entität {self.entitaet} fehlt."
                 return {"aktiv": aktiv, "grund": grund}
-            geaendert = aktiv != bisher
-            if (geaendert or erzwingen) and ist is not aktiv:
-                if self.schreibbar:
-                    await self._schalten(aktiv, grund, einst["modus"])
-                else:
-                    _LOGGER.info("%s ist kein input_boolean, Heizperiode wird nur gelesen", self.entitaet)
-            if geaendert:
-                gespeichert = await self._zustand_gespeichert()
-                gespeichert["entscheidung"] = aktiv
-                await self.store.einstellung_setzen(ZUSTAND, gespeichert)
+            if gespeichert.get("entitaet") == self.entitaet:
+                neu = dict(gespeichert)
+            else:
+                neu = {k: v for k, v in gespeichert.items() if k == "letzte_aenderung"}
+            neu["entitaet"] = self.entitaet
+            if aktiv != bisher or erzwingen:
+                neu["angewendet"] = False
+            neu["entscheidung"] = aktiv
+            try:
+                grund = await self._abgleichen(neu, einst, aktiv, ist, grund)
+            finally:
+                if neu != gespeichert:
+                    await self.store.einstellung_setzen(ZUSTAND, neu)
             return {"aktiv": aktiv, "grund": grund}
+
+    async def _abgleichen(self, neu: dict[str, Any], einst: dict[str, Any], aktiv: bool, ist: bool | None, grund: str) -> str:
+        """Istzustand mit der Entscheidung abgleichen; ``neu`` (gespeicherter Zustand) wird angepasst."""
+        if ist is aktiv:
+            neu["angewendet"] = True
+            neu.pop("abweichung_seit", None)
+            return grund
+        jetzt = datetime.now(UTC)
+        seit = _zeit(neu.get("abweichung_seit"))
+        if seit is None:
+            neu["abweichung_seit"] = jetzt.isoformat(timespec="seconds")
+        if not self.schreibbar:
+            _LOGGER.info("%s ist kein input_boolean, Heizperiode wird nur gelesen", self.entitaet)
+            return grund
+        fest = einst["modus"] != "automatik"
+        winterschutz = not fest and aktiv and seit is not None and jetzt - seit >= timedelta(hours=WINTERSCHUTZ_STUNDEN)
+        if not (fest or not neu.get("angewendet") or winterschutz):
+            return grund  # manuelle Umschaltung in HA respektieren
+        if winterschutz:
+            grund = (
+                f"Winterschutz: Die Freigabe stand seit mehr als {WINTERSCHUTZ_STUNDEN} Stunden auf aus, "
+                f"obwohl die Automatik Heizperiode ermittelt. {grund}"
+            )
+            _LOGGER.warning("%s", grund)
+        neu["angewendet"] = False
+        if await self._schalten(aktiv, grund, einst["modus"]):
+            neu["angewendet"] = True
+            neu.pop("abweichung_seit", None)
+            neu["letzte_aenderung"] = jetzt_iso()
+        return grund
 
     async def _entscheidung(self, einst: dict[str, Any], bisher: bool | None, ist: bool | None) -> tuple[bool | None, str]:
         if einst["modus"] == "heizperiode":
@@ -333,12 +411,11 @@ class Heizperiode:
         einst = await self.einstellungen()
         by_id = {s["entity_id"]: s for s in states or await self.client.get_states()}
         st = by_id.get(self.entitaet)
-        zustand = st.get("state") if st else None
-        zustand = zustand if zustand in ("on", "off") else None
+        roh = st.get("state") if st else None
+        zustand = roh if roh in ("on", "off") else None
         aktiv = _an_aus(zustand)
         gespeichert = await self._zustand_gespeichert()
-        bisher = gespeichert.get("entscheidung")
-        bisher = bisher if isinstance(bisher, bool) else None
+        bisher = self._bisher(gespeichert)
         tage, werte = await self.tagesmittel()
         e_aktiv, grund = await self._entscheidung(einst, bisher, aktiv)
         if st is None:
@@ -347,6 +424,22 @@ class Heizperiode:
         sperre = by_id.get(SPERRE_SENSOR)
         if zustand == "off" and sperre is not None:
             verknuepft = (sperre.get("attributes") or {}).get("sperre_grund") == "freigabe_aus"
+        abweichung: dict[str, Any] | None = None
+        if st is not None and e_aktiv is not None and aktiv is not e_aktiv:
+            eigen = gespeichert.get("entitaet") == self.entitaet
+            seit = gespeichert.get("abweichung_seit") if eigen else None
+            seit_dt = _zeit(seit)
+            ausstehend = einst["modus"] != "automatik" or not (eigen and gespeichert.get("angewendet"))
+            winterschutz_ab = None
+            if e_aktiv and not ausstehend and seit_dt is not None:
+                winterschutz_ab = (seit_dt + timedelta(hours=WINTERSCHUTZ_STUNDEN)).isoformat(timespec="seconds")
+            abweichung = {
+                "ist": str(roh)[:32],
+                "soll": "on" if e_aktiv else "off",
+                "seit": seit,
+                "ausstehend": ausstehend and self.schreibbar,
+                "winterschutz_ab": winterschutz_ab if self.schreibbar else None,
+            }
         return {
             **einst,
             "entitaet": self.entitaet,
@@ -356,6 +449,7 @@ class Heizperiode:
             "verknuepft": verknuepft,
             "tagesmittel": [{"datum": t.isoformat(), "mittel": v} for t, v in zip(tage, werte, strict=True)],
             "entscheidung": {"aktiv": e_aktiv, "grund": grund},
+            "abweichung": abweichung,
             "letzte_aenderung": gespeichert.get("letzte_aenderung"),
             "naechste_pruefung": self.naechste.isoformat(timespec="seconds") if self.naechste else None,
             "aussen_aktuell": an.to_float((by_id.get(self.opts.aussentemperatur) or {}).get("state")),
@@ -370,11 +464,41 @@ class Heizperiode:
                 f"{self.entitaet} ist kein input_boolean und kann von Klima Studio nicht geschaltet werden.",
                 "nur_lesen",
             )
+        modus_neu = neu["modus"] != alt["modus"]
+        if modus_neu:
+            # Ausstehendes Anwenden dauerhaft vermerken: Scheitert das Schalten jetzt,
+            # holt die nächste Prüfung es nach (feste Modi werden ohnehin immer durchgesetzt).
+            async with self._lock:
+                zustand = await self._zustand_gespeichert()
+                if zustand.get("entitaet") == self.entitaet:
+                    zustand["angewendet"] = False
+                    await self.store.einstellung_setzen(ZUSTAND, zustand)
         await self.store.einstellung_setzen(EINSTELLUNG, neu)
         if neu != alt:
             await self.store.ereignis("heizperiode", None, "Einstellungen der Heizperiode geändert", neu)
-        await self.pruefen(erzwingen=neu["modus"] != alt["modus"])
+        try:
+            await self.pruefen(erzwingen=modus_neu)
+        except HAError as err:
+            raise HAError(
+                f"Einstellungen gespeichert, die Freigabe konnte aber nicht geschaltet werden ({err}). "
+                "Klima Studio versucht es bei der nächsten Prüfung erneut.",
+                err.code,
+            ) from err
         return await self.status()
+
+    async def _entscheidung_einrichten(self, einst: dict[str, Any]) -> tuple[bool, str]:
+        """Startzustand einer neu angelegten Freigabe: aus nur bei eindeutigem Ende der Heizperiode."""
+        if einst["modus"] != "automatik":
+            aktiv, grund = await self._entscheidung(einst, None, None)
+            return bool(aktiv), grund
+        _, werte = await self.tagesmittel()
+        klar = eindeutig(werte, einst)
+        aktiv, grund = entscheide(werte, einst, None, None)
+        if klar is False:
+            return False, grund
+        if klar is True:
+            return True, grund
+        return True, "Neu angelegt ohne eindeutiges Ende der Heizperiode: Heizperiode als sicherer Startzustand."
 
     async def einrichten(self) -> dict[str, Any]:
         states = await self.client.get_states()
@@ -391,14 +515,28 @@ class Heizperiode:
         if neu != self.entitaet:
             _LOGGER.warning("Angelegt wurde %s statt %s", neu, self.entitaet)
         einst = await self.einstellungen()
-        aktiv, grund = await self._entscheidung(einst, None, None)
-        if aktiv is None:
-            aktiv, grund = True, "Neu angelegt, noch keine Entscheidung möglich: Heizperiode."
-        await self._schalten(aktiv, grund, einst["modus"], entitaet=neu)
+        aktiv, grund = await self._entscheidung_einrichten(einst)
         async with self._lock:
             gespeichert = await self._zustand_gespeichert()
-            gespeichert["entscheidung"] = aktiv
-            await self.store.einstellung_setzen(ZUSTAND, gespeichert)
+            zustand: dict[str, Any] = {"entitaet": neu, "entscheidung": aktiv, "angewendet": False}
+            if gespeichert.get("letzte_aenderung"):
+                zustand["letzte_aenderung"] = gespeichert["letzte_aenderung"]
+            try:
+                if await self._schalten(aktiv, grund, einst["modus"], entitaet=neu):
+                    zustand["angewendet"] = True
+                    zustand["letzte_aenderung"] = jetzt_iso()
+            finally:
+                await self.store.einstellung_setzen(ZUSTAND, zustand)
         out = await self.status()
         out["hinweis"] = HINWEIS_EINRICHTEN.format(entitaet=neu)
         return out
+
+
+def _zeit(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)

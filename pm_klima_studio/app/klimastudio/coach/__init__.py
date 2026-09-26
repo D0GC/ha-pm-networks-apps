@@ -141,9 +141,9 @@ class Coach:
                 )
             except HAError as err:
                 lauf["dauer_s"] = round(time.monotonic() - start, 1)
-                lauf["fehler"] = f"Aufruf der KI fehlgeschlagen: {err}"[:500]
+                lauf["fehler"] = ki.fehlertext(err)[:500]
                 await self.store.ki_lauf_speichern(lauf, bericht)
-                raise
+                raise HAError(lauf["fehler"], err.code, err.meldung) from err
             lauf["dauer_s"] = round(time.monotonic() - start, 1)
             data = ki.antwort_daten(resp)
             try:

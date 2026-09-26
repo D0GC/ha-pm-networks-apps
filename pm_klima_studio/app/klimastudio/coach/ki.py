@@ -12,6 +12,7 @@ import math
 import re
 from typing import Any
 
+from ..ha_client import HAError
 from .engine import MASSNAHMEN
 
 KI_TIMEOUT = 180
@@ -151,3 +152,12 @@ def antwort_daten(resp: Any) -> Any:
     if isinstance(resp, dict):
         return resp.get("data")
     return resp
+
+
+def fehlertext(err: HAError) -> str:
+    """Fehler beim Aufruf der KI für Nutzer lesbar, ohne technische Präfixe."""
+    if err.meldung:
+        return f"Der KI-Dienst meldet: {bereinige_text(err.meldung, 400)}"
+    if err.code == "timeout":
+        return f"Der KI-Dienst hat nicht innerhalb von {KI_TIMEOUT} Sekunden geantwortet."
+    return "Der KI-Dienst ist nicht erreichbar. Bitte prüfen Sie die Verbindung zu Home Assistant."

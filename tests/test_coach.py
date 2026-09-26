@@ -25,7 +25,7 @@ from klimastudio.coach.engine import (
     pruefe_bedingung,
     wert,
 )
-from klimastudio.coach.lage import GLOBAL_PFADE, RAUM_PFADE
+from klimastudio.coach.lage import GLOBAL_PFADE, RAUM_PFADE, anwesenheit, plan_kennzahlen
 from klimastudio.coach.store import CoachStore
 from klimastudio.config import Options
 from klimastudio.server import KlimaStudio, create_app
@@ -86,6 +86,11 @@ def B(w, op, **kw):
         (B("raum.leer", "<", ref=100), False),
         (B("raum.leer", "!=", ref=1), False),
         (B("raum.leer", "in", ref=[1, 2]), False),
+        (B("raum.soll", "!=", pfad="raum.leer"), False),
+        ({"nicht": B("raum.leer", "!=", ref=1)}, True),
+        # vorhandener Wert, anderer Typ: == falsch, != wahr
+        (B("raum.modus", "!=", ref=1), True),
+        (B("raum.modus", "==", ref=1), False),
         # Pfadvergleich mit Offset
         (B("raum.soll", ">", pfad="raum.ist"), True),
         (B("raum.soll", ">", pfad="raum.ist", plus=1.5), False),
@@ -481,6 +486,37 @@ async def test_lage_context_has_all_paths(studio):
     assert 0 <= g["zeit"]["wochentag"] <= 6
 
 
+def test_plan_kennzahlen_ignores_setback_blocks():
+    def blk(von, bis, temp):
+        return {"start": von * 60, "end": bis * 60, "temp": temp, "extra": {}}
+
+    tag = [blk(0, 6, 17.0), blk(6, 22, 21.0), blk(22, 24, 16.5)]
+    p = plan_kennzahlen({d: list(tag) for d in ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")})
+    assert p["nacht"] is False  # abgesenkter Nachtblock ist gewollt
+    assert p["stunden_woche"] == 7 * 16
+    assert (p["min_temp"], p["max_temp"]) == (16.5, 21.0)
+    warm = plan_kennzahlen({"monday": [blk(0, 6, 18.0)], "tuesday": [blk(0, 5, None)]})
+    assert warm["nacht"] is True
+    assert warm["stunden_woche"] == 11
+    assert plan_kennzahlen({"monday": [blk(0, 24, 17.5)]})["stunden_woche"] == 0
+
+
+def test_presence_ignores_unknown_persons_without_helper():
+    by_id = {
+        "person.dominik": {"state": "home", "attributes": {"friendly_name": "Dominik"}},
+        "person.dashboard": {"state": "unknown", "attributes": {"friendly_name": "Dashboard"}},
+        "person.tablet": {"state": "unavailable", "attributes": {}},
+        "person.gina_perina": {"state": "unknown", "attributes": {"friendly_name": "Gina Perina"}},
+        "input_boolean.gina_ist_zuhause": {"state": "off"},
+    }
+    zusammen, personen = anwesenheit(by_id)
+    assert {p["name"]: p["zuhause"] for p in personen} == {"Dominik": True, "Gina Perina": False}
+    assert zusammen == {"jemand_zuhause": True, "anzahl_zuhause": 1}
+    zusammen, personen = anwesenheit({"person.dashboard": {"state": "unknown", "attributes": {}}})
+    assert personen == []
+    assert zusammen == {"jemand_zuhause": None, "anzahl_zuhause": None}
+
+
 async def test_weather_uses_return_response(studio, fake):
     await studio.coach.lage.erstellen()
     calls = [c for c in fake.service_calls if c[0] == "weather"]
@@ -496,6 +532,7 @@ VERBOTEN = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\b[0-9a-f]{32}\b|
 
 
 async def test_lagebericht_with_presence(app_client, fake):
+    fake.extra["person.dashboard"] = ("unknown", {"friendly_name": "Dashboard"})
     d = await (await app_client.get("/api/coach/lagebericht")).json()
     assert d["entitaet"] == "ai_task.claude_ai_task"
     assert d["anwesenheit"] is True
@@ -524,7 +561,7 @@ async def test_lagebericht_without_presence(aiohttp_client, ha_client, fake, tmp
     assert "personen" not in d["lage"]
     assert "anwesenheit" not in d["lage"]
     assert "Dominik" not in json.dumps(d, ensure_ascii=False)
-    resp = await client.post("/api/coach/ki")
+    resp = await client.post("/api/coach/ki", json={})
     assert resp.status == 200
     instructions = next(c[2]["instructions"] for c in fake.service_calls if c[0] == "ai_task")
     assert "Dominik" not in instructions
@@ -535,7 +572,7 @@ async def test_lagebericht_without_presence(aiohttp_client, ha_client, fake, tmp
 
 
 async def test_ki_run_success(app_client, fake):
-    resp = await app_client.post("/api/coach/ki")
+    resp = await app_client.post("/api/coach/ki", json={})
     d = await resp.json()
     assert resp.status == 200, d
     assert set(d) == {"id", "erstellt", "entitaet", "dauer_s", "zusammenfassung", "tipps", "roh", "fehler"}
@@ -574,17 +611,17 @@ async def test_ki_run_success(app_client, fake):
 
 async def test_ki_run_fenced_and_dict(app_client, fake):
     fake.ki_antwort = "Hier ist die Auswertung:\n```json\n" + fake.ki_antwort + "\n```"
-    d = await (await app_client.post("/api/coach/ki")).json()
+    d = await (await app_client.post("/api/coach/ki", json={})).json()
     assert d["fehler"] is None
     assert len(d["tipps"]) == 2
     fake.ki_antwort = {"zusammenfassung": "Strukturiert", "tipps": []}
-    d = await (await app_client.post("/api/coach/ki")).json()
+    d = await (await app_client.post("/api/coach/ki", json={})).json()
     assert d["zusammenfassung"] == "Strukturiert"
 
 
 async def test_ki_run_broken_json(app_client, fake):
     fake.ki_antwort = 'Leider {"zusammenfassung": "abgeschnitten'
-    d = await (await app_client.post("/api/coach/ki")).json()
+    d = await (await app_client.post("/api/coach/ki", json={})).json()
     assert d["fehler"]
     assert d["roh"] == fake.ki_antwort
     assert d["tipps"] == []
@@ -594,7 +631,7 @@ async def test_ki_run_broken_json(app_client, fake):
 
 async def test_ki_run_parallel_conflict(app_client, fake):
     fake.ki_delay = 0.5
-    r1, r2 = await asyncio.gather(app_client.post("/api/coach/ki"), app_client.post("/api/coach/ki"))
+    r1, r2 = await asyncio.gather(app_client.post("/api/coach/ki", json={}), app_client.post("/api/coach/ki", json={}))
     assert sorted([r1.status, r2.status]) == [200, 409]
     konflikt = r1 if r1.status == 409 else r2
     assert (await konflikt.json())["code"] == "laeuft"
@@ -602,17 +639,21 @@ async def test_ki_run_parallel_conflict(app_client, fake):
 
 async def test_ki_missing_entity_and_ha_error(app_client, fake, studio):
     del fake.extra["ai_task.claude_ai_task"]
-    resp = await app_client.post("/api/coach/ki")
+    resp = await app_client.post("/api/coach/ki", json={})
     body = await resp.json()
     assert resp.status == 409
     assert body["code"] == "ki_fehlt"
     assert "coach_ki_entitaet" in body["fehler"]
     fake.extra["ai_task.claude_ai_task"] = ("unknown", {})
-    fake.ki_fehler = True
-    resp = await app_client.post("/api/coach/ki")
+    fake.ki_fehler = "Error talking to API: overloaded"
+    resp = await app_client.post("/api/coach/ki", json={})
     assert resp.status == 502
+    assert (await resp.json())["fehler"] == "Der KI-Dienst meldet: Error talking to API: overloaded"
     liste = await (await app_client.get("/api/coach/ki")).json()
-    assert liste[0]["fehler"].startswith("Aufruf der KI fehlgeschlagen")
+    assert liste[0]["fehler"] == "Der KI-Dienst meldet: Error talking to API: overloaded"
+    call = [c for c in fake.ws_commands if c["type"] == "call_service" and c["domain"] == "ai_task"][-1]
+    assert call["return_response"] is True
+    assert call["service_data"]["entity_id"] == "ai_task.claude_ai_task"
 
 
 async def test_real_knowledge_evaluates_against_fake(ha_client, fake, tmp_path):

@@ -2,6 +2,20 @@
 
 Die Regeln stehen als Daten in ``wissen.json`` (siehe Entwurf D1). Bedingungen
 werden ausschließlich interpretiert (keine Codeausführung, kein eval).
+
+Semantik der Bedingungen (dreiwertige Daten, zweiwertige Logik):
+
+* Ein Atom (``{"wert", "op", ...}``) mit fehlendem Wert (Pfad nicht vorhanden,
+  ``None`` oder nicht endliche Zahl) ist **falsch**, für alle Operatoren außer
+  ``fehlt`` (wahr) – also auch für ``!=`` und ``in``. Dasselbe gilt, wenn der
+  Vergleichswert über ``pfad`` fehlt.
+* ``nicht`` negiert das Ergebnis. ``nicht`` über einem Atom mit fehlendem Wert
+  ist daher **wahr**. Regeln, die einen vorhandenen Wert voraussetzen, sollten
+  ``{"wert": ..., "op": "vorhanden"}`` zusätzlich in ``alle`` aufnehmen.
+* ``==``/``!=`` vergleichen typstreng: Wahrheitswerte nur mit Wahrheitswerten,
+  Zahlen nur mit Zahlen (Toleranz 1e-9), Texte nur mit Texten. Bei vorhandenem
+  Wert und Typ-Ungleichheit ist ``==`` falsch und ``!=`` wahr.
+* ``<``, ``<=``, ``>``, ``>=`` sind nur für zwei Zahlen wahr, sonst falsch.
 """
 
 from __future__ import annotations

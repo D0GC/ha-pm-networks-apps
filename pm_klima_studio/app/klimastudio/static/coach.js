@@ -160,7 +160,7 @@
     st.ergebnisFehler = null;
     st.hinweis = null;
     // Kein clientseitiges Zeitlimit: der Server wartet bis zu 180 s auf den KI-Dienst.
-    st.lauf = A().api("coach/ki", { method: "POST" });
+    st.lauf = A().api("coach/ki", { method: "POST", body: {} });
     zeichneKi();
     try {
       const { data } = await st.lauf;

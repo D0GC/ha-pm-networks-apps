@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -73,14 +74,22 @@ def make_ingress_filter(networks: list[Any]):
     return ingress_filter
 
 
+def _setze_header(request: web.Request, headers: Any) -> None:
+    headers.setdefault("Content-Security-Policy", CSP)
+    headers.setdefault("X-Content-Type-Options", "nosniff")
+    headers.setdefault("Referrer-Policy", "same-origin")
+    if request.path.startswith("/api/"):
+        headers.setdefault("Cache-Control", "no-store")
+
+
 @web.middleware
 async def security_headers(request: web.Request, handler):
-    resp = await handler(request)
-    resp.headers.setdefault("Content-Security-Policy", CSP)
-    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-    resp.headers.setdefault("Referrer-Policy", "same-origin")
-    if request.path.startswith("/api/"):
-        resp.headers.setdefault("Cache-Control", "no-store")
+    try:
+        resp = await handler(request)
+    except web.HTTPException as exc:  # auch Fehlerantworten (400/404/409 …) absichern
+        _setze_header(request, exc.headers)
+        raise
+    _setze_header(request, resp.headers)
     return resp
 
 
@@ -263,6 +272,12 @@ async def _json_body(request: web.Request) -> dict[str, Any]:
     if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Objekt erwartet")
     return body
+
+
+def _json_pflicht(request: web.Request) -> None:
+    """POST ohne Nutzdaten: Content-Type application/json verlangen (Schutz vor einfachen Formular-POSTs)."""
+    if request.content_type != "application/json":
+        raise web.HTTPUnsupportedMediaType(text="JSON erwartet")
 
 
 async def index(request: web.Request) -> web.Response:
@@ -450,11 +465,16 @@ async def api_steuerung(request: web.Request) -> web.Response:
     states = await ks.client.get_states()
     by_id = {s["entity_id"]: s for s in states if "entity_id" in s}
     rooms = await ks.rooms()
+    try:
+        heizperiode = await ks.heizperiode.status(states)
+    except (sqlite3.Error, HAError) as err:  # Raumsteuerung bleibt nutzbar
+        _LOGGER.warning("Status der Heizperiode nicht verfügbar: %s", err)
+        heizperiode = None
     return web.json_response(
         {
             "raeume": {r.raum: st.raum_zustand(r, by_id, ks.opts) for r in rooms},
             "integration": st.integration_status(by_id),
-            "heizperiode": await ks.heizperiode.status(states),
+            "heizperiode": heizperiode,
         }
     )
 
@@ -498,6 +518,7 @@ async def api_heizperiode_post(request: web.Request) -> web.Response:
 
 
 async def api_heizperiode_einrichten(request: web.Request) -> web.Response:
+    _json_pflicht(request)
     ks = _ks(request)
     result = await ks.heizperiode.einrichten()
     ks.coach.invalidieren()
@@ -524,6 +545,7 @@ async def api_coach_lagebericht(request: web.Request) -> web.Response:
 
 
 async def api_coach_ki_post(request: web.Request) -> web.Response:
+    _json_pflicht(request)
     return web.json_response(await _ks(request).coach.ki_lauf())
 
 

@@ -21,6 +21,7 @@ from ..steuerung import integration_status, raum_zustand
 _LOGGER = logging.getLogger(__name__)
 
 WOCHE_TTL = 900
+HEIZ_MIN_TEMP = 18.0  # ab dieser Blocktemperatur gilt ein Block als Heizblock (plan.stunden_woche, plan.nacht)
 WETTER_TTL = 1800
 REGEN_ZUSTAENDE = {"rainy", "pouring", "lightning-rainy", "snowy-rainy", "hail"}
 TAG_KURZ = {
@@ -116,8 +117,13 @@ def _r1(v: Any) -> float | None:
 
 
 def anwesenheit(by_id: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """person.* und input_boolean.*_ist_zuhause zusammenführen."""
+    """person.* und input_boolean.*_ist_zuhause zusammenführen.
+
+    Personen mit unbekanntem Zustand (unknown/unavailable) ohne zugeordneten
+    ``input_boolean.*_ist_zuhause`` (z. B. ``person.dashboard``) werden nicht berücksichtigt.
+    """
     personen: dict[str, dict[str, Any]] = {}
+    zugeordnet: set[str] = set()
     for eid, st in sorted(by_id.items()):
         if not eid.startswith("person."):
             continue
@@ -134,8 +140,12 @@ def anwesenheit(by_id: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], list[
         match = next((k for k in personen if k == key or k.startswith(key + "_")), None)
         if match is None:
             personen[key] = {"name": key.replace("_", " ").title(), "zuhause": val}
-        elif val is True or personen[match]["zuhause"] is None:
-            personen[match]["zuhause"] = val if val is not None else personen[match]["zuhause"]
+            zugeordnet.add(key)
+        else:
+            zugeordnet.add(match)
+            if val is True or personen[match]["zuhause"] is None:
+                personen[match]["zuhause"] = val if val is not None else personen[match]["zuhause"]
+    personen = {k: p for k, p in personen.items() if k in zugeordnet or p["zuhause"] is not None}
     bekannt = [p for p in personen.values() if p["zuhause"] is not None]
     zusammen = {
         "jemand_zuhause": any(p["zuhause"] for p in bekannt) if bekannt else None,
@@ -200,11 +210,14 @@ def plan_kennzahlen(tage: dict[str, list[dict[str, Any]]] | None) -> dict[str, A
         return {"max_temp": None, "min_temp": None, "stunden_woche": None, "nacht": None, "leer": None, "tage_ohne_block": None}
     bloecke = [b for day in sch.DAYS for b in tage.get(day) or []]
     temps = [b["temp"] for b in bloecke if b.get("temp") is not None]
+    # Heizstunden und Nachtheizen zählen nur Blöcke ab HEIZ_MIN_TEMP; abgesenkte Blöcke
+    # (z. B. 17 °C in der Nacht) sind gewollt. Blöcke ohne Temperatur zählen als Heizblock.
+    heizend = [b for b in bloecke if b.get("temp") is None or b["temp"] >= HEIZ_MIN_TEMP]
     return {
         "max_temp": max(temps) if temps else None,
         "min_temp": min(temps) if temps else None,
-        "stunden_woche": round(sum(b["end"] - b["start"] for b in bloecke) / 60, 1),
-        "nacht": any(b["start"] <= 60 and b["end"] >= 240 for b in bloecke),
+        "stunden_woche": round(sum(b["end"] - b["start"] for b in heizend) / 60, 1),
+        "nacht": any(b["start"] <= 60 and b["end"] >= 240 for b in heizend),
         "leer": not bloecke,
         "tage_ohne_block": sum(1 for day in sch.DAYS if not tage.get(day)),
     }
