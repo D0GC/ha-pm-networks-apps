@@ -1,0 +1,35 @@
+configuration:
+  bericht_tag:
+    name: Berichtstag
+    description: Wochentag, an dem der Wochenbericht erstellt wird.
+  bericht_uhrzeit:
+    name: Berichtsuhrzeit
+    description: Uhrzeit im Format HH:MM (Zeitzone von Home Assistant, Standard 18:00).
+  bericht_notify:
+    name: Push-Dienste
+    description: >-
+      notify-Dienste für den Wochenbericht, z. B. notify.mobile_app_telefon.
+      Leer lassen, wenn kein Push gewünscht ist.
+  raeume_override:
+    name: Räume anpassen
+    description: >-
+      Optional. Je Eintrag "raum" (Kürzel wie wohnzimmer) und beliebig name, climate, schedule,
+      feuchte, schimmel, luftqualitaet, lueften, fenster, co2 oder ausblenden: true.
+  praefix_klima:
+    name: Präfix Thermostate
+    description: Präfix für die automatische Raumerkennung (Standard climate.pm_).
+  praefix_heizplan:
+    name: Präfix Heizpläne
+    description: Präfix der schedule-Helfer (Standard schedule.heizplan_).
+  empfehlung:
+    name: Empfehlungssensor
+    description: Standard sensor.pm_klima_empfehlung.
+  aussentemperatur:
+    name: Außentemperatur
+    description: Standard sensor.aussentemperatur.
+  aussenfeuchte:
+    name: Außenluftfeuchte
+    description: Standard sensor.aussenluftfeuchte.
+  log_level:
+    name: Protokollstufe
+    description: debug, info, warning oder error.

@@ -1,0 +1,24 @@
+[project]
+name = "pm-klima-studio-dev"
+version = "1.0.0"
+requires-python = ">=3.12"
+description = "Entwicklungsumgebung für die Home-Assistant-App PM Klima Studio"
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+src = ["pm_klima_studio/app", "tests"]
+extend-exclude = ["pm_klima_studio/app/klimastudio/static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "ASYNC", "S", "RUF", "PT", "C4"]
+ignore = ["S101", "S311", "ASYNC109", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["pm_klima_studio/app", "tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

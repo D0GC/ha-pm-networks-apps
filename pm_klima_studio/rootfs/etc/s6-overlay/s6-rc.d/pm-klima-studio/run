@@ -1,0 +1,10 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# PM Klima Studio starten (Ingress-Port 8099, Daten in /data)
+# ==============================================================================
+bashio::log.info "PM Klima Studio startet ..."
+export PMKS_DATA_DIR=/data
+export PMKS_PORT=8099
+cd /opt/pm_klima_studio || bashio::exit.nok "Programmverzeichnis fehlt"
+exec python3 -m klimastudio

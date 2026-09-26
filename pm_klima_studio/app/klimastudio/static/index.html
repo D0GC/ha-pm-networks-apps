@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<base href="__BASE__">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Klima Studio</title>
+<link rel="icon" href="static/img/icon_lavender.svg" type="image/svg+xml">
+<link rel="stylesheet" href="static/app.css?v=__VERSION__">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="static/img/icon_lavender.svg" alt="" class="brand-icon">
+    <div class="brand-text">
+      <span class="kicker">PM Networks</span>
+      <span class="title">Klima Studio</span>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs" role="tablist">
+    <a href="#/uebersicht" data-tab="uebersicht" role="tab">Übersicht</a>
+    <a href="#/heizplan" data-tab="heizplan" role="tab">Heizplan</a>
+    <a href="#/auswertung" data-tab="auswertung" role="tab">Auswertung</a>
+    <a href="#/berichte" data-tab="berichte" role="tab">Berichte</a>
+  </nav>
+</header>
+
+<main id="main" aria-live="polite">
+  <div class="loading">Daten werden geladen …</div>
+</main>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<div id="modal" class="modal" hidden>
+  <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div id="modal-actions" class="actions"></div>
+  </div>
+</div>
+
+<footer class="foot">
+  <img src="static/img/logo_horizontal_lavender.svg" alt="PM Networks" class="foot-logo">
+  <span>Klima Studio __VERSION__</span>
+</footer>
+<script src="static/charts.js?v=__VERSION__"></script>
+<script src="static/app.js?v=__VERSION__"></script>
+</body>
+</html>
