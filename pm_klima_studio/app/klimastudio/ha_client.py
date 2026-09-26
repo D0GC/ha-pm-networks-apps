@@ -26,11 +26,16 @@ WS_MAX_MSG = 64 * 1024 * 1024
 
 
 class HAError(Exception):
-    """Fehler bei der Kommunikation mit Home Assistant."""
+    """Fehler bei der Kommunikation mit Home Assistant.
 
-    def __init__(self, message: str, code: str | None = None) -> None:
+    ``meldung`` enthält, falls vorhanden, die Fehlermeldung von HA im Klartext
+    (ohne technische Präfixe), z. B. aus einer WebSocket-Fehlerantwort.
+    """
+
+    def __init__(self, message: str, code: str | None = None, meldung: str | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.meldung = meldung
 
 
 class HAClient:
@@ -63,14 +68,14 @@ class HAClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"}
 
-    async def rest(self, method: str, path: str, **kwargs: Any) -> Any:
+    async def rest(self, method: str, path: str, timeout: float | None = None, **kwargs: Any) -> Any:
         url = f"{self.api_url}/{path.lstrip('/')}"
         try:
             async with self._session.request(
                 method,
                 url,
                 headers=self._headers,
-                timeout=aiohttp.ClientTimeout(total=self._timeout),
+                timeout=aiohttp.ClientTimeout(total=timeout or self._timeout),
                 **kwargs,
             ) as resp:
                 if resp.status >= 400:
@@ -90,8 +95,30 @@ class HAClient:
     async def get_config(self) -> dict[str, Any]:
         return await self.rest("GET", "config")
 
-    async def call_service(self, domain: str, service: str, data: dict[str, Any]) -> Any:
-        return await self.rest("POST", f"services/{domain}/{service}", json=data)
+    async def call_service(
+        self,
+        domain: str,
+        service: str,
+        data: dict[str, Any],
+        return_response: bool = False,
+        timeout: float | None = None,
+    ) -> Any:
+        """Dienst aufrufen.
+
+        Ohne ``return_response`` über REST ``POST /api/services/<domain>/<service>``.
+        Mit ``return_response`` über WebSocket ``call_service`` (homeassistant/components/
+        websocket_api/commands.py); zurückgegeben wird ``result["response"]``. Fehler von HA
+        kommen so im Klartext an (``HAError.meldung``). ``entity_id`` steht in ``service_data``.
+        """
+        if not return_response:
+            return await self.rest("POST", f"services/{domain}/{service}", timeout=timeout, json=data)
+        result = await self.ws_command(
+            {"type": "call_service", "domain": domain, "service": service, "service_data": data, "return_response": True},
+            timeout=timeout,
+        )
+        if isinstance(result, dict):
+            return result.get("response")
+        return None
 
     async def history_period_rest(
         self,
@@ -202,12 +229,15 @@ class HAClient:
                 continue
             except TimeoutError as err:
                 pending.pop(msg_id, None)
-                raise HAError(f"{payload.get('type')}: Zeitüberschreitung") from err
+                raise HAError(f"{payload.get('type')}: Zeitüberschreitung", "timeout") from err
             if not resp.get("success", False):
                 error = resp.get("error") or {}
+                meldung = error.get("message")
+                meldung = str(meldung).strip()[:500] if meldung else None
                 raise HAError(
-                    f"{payload.get('type')}: {error.get('message', 'unbekannter Fehler')}",
+                    f"{payload.get('type')}: {meldung or 'unbekannter Fehler'}",
                     error.get("code", "error"),
+                    meldung,
                 )
             return resp.get("result")
         raise HAError("unerreichbar")  # pragma: no cover
@@ -229,6 +259,13 @@ class HAClient:
         if message.get("type") != "schedule/update":
             raise ValueError("schedule/update erwartet")
         return await self.ws_command(dict(message))
+
+    async def input_boolean_create(self, name: str, icon: str | None = None) -> dict[str, Any]:
+        """``input_boolean/create`` (helpers/collection.py); Ergebnis enthält ``id``."""
+        payload: dict[str, Any] = {"type": "input_boolean/create", "name": name}
+        if icon:
+            payload["icon"] = icon
+        return await self.ws_command(payload)
 
     async def entity_registry_get(self, entity_id: str) -> dict[str, Any]:
         return await self.ws_command({"type": "config/entity_registry/get", "entity_id": entity_id})

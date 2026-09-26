@@ -1,8 +1,8 @@
 name: PM Klima Studio
-version: "1.0.1"
+version: "1.1.0"
 slug: pm_klima_studio
 description: >-
-  Heizplan-Editor, Klima-Auswertungen und Wochenbericht für die Integration PM Klima.
+  Heizplan-Editor, Steuerung, Klima-Auswertungen, Klima-Coach und Wochenbericht für die Integration PM Klima.
 url: "https://github.com/D0GC/ha-pm-networks-apps"
 arch:
   - aarch64
@@ -25,6 +25,10 @@ options:
   bericht_uhrzeit: "18:00"
   bericht_notify: []
   raeume_override: []
+  heizperiode_entitaet: input_boolean.pm_heizperiode
+  coach_ki_entitaet: ai_task.claude_ai_task
+  coach_anwesenheit: true
+  wetter_entitaet: weather.dwd_zuhause
   log_level: info
 schema:
   bericht_tag: list(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)
@@ -48,4 +52,8 @@ schema:
   empfehlung: str?
   aussentemperatur: str?
   aussenfeuchte: str?
+  heizperiode_entitaet: str?
+  coach_ki_entitaet: str?
+  coach_anwesenheit: bool?
+  wetter_entitaet: str?
   log_level: list(debug|info|warning|error)

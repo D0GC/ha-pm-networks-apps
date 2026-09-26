@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,9 +21,12 @@ from aiohttp import web
 
 from . import __version__
 from . import schedule as sch
+from . import steuerung as st
+from .coach import Coach, CoachStore
 from .config import DATA_DIR, Options, Room, discover_rooms
 from .data import RANGES, DataService
 from .ha_client import HAClient, HAError
+from .heizperiode import Heizperiode
 from .report import ReportArchive, WeeklyScheduler, build_report
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,6 +37,7 @@ INGRESS_PATH_RE = re.compile(r"^/api/hassio_ingress/[A-Za-z0-9_\-]+$")
 ROOM_TTL = 300
 OVERVIEW_TTL = 120
 REGISTRY_CACHE_MAX = 32
+EREIGNIS_TYP_RE = re.compile(r"^[a-z_]{1,32}$")
 TZ_RETRY = (10, 30, 60, 120, 300)
 
 CSP = (
@@ -69,14 +74,22 @@ def make_ingress_filter(networks: list[Any]):
     return ingress_filter
 
 
+def _setze_header(request: web.Request, headers: Any) -> None:
+    headers.setdefault("Content-Security-Policy", CSP)
+    headers.setdefault("X-Content-Type-Options", "nosniff")
+    headers.setdefault("Referrer-Policy", "same-origin")
+    if request.path.startswith("/api/"):
+        headers.setdefault("Cache-Control", "no-store")
+
+
 @web.middleware
 async def security_headers(request: web.Request, handler):
-    resp = await handler(request)
-    resp.headers.setdefault("Content-Security-Policy", CSP)
-    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-    resp.headers.setdefault("Referrer-Policy", "same-origin")
-    if request.path.startswith("/api/"):
-        resp.headers.setdefault("Cache-Control", "no-store")
+    try:
+        resp = await handler(request)
+    except web.HTTPException as exc:  # auch Fehlerantworten (400/404/409 …) absichern
+        _setze_header(request, exc.headers)
+        raise
+    _setze_header(request, resp.headers)
     return resp
 
 
@@ -99,7 +112,7 @@ def ingress_base(request: web.Request) -> str:
 class KlimaStudio:
     """Anwendungszustand."""
 
-    def __init__(self, opts: Options, client: HAClient, data_dir: Path = DATA_DIR) -> None:
+    def __init__(self, opts: Options, client: HAClient, data_dir: Path = DATA_DIR, wissen_pfad: Path | None = None) -> None:
         self.opts = opts
         self.client = client
         self.data = DataService(client)
@@ -113,6 +126,9 @@ class KlimaStudio:
         self.scheduler: WeeklyScheduler | None = None
         self._tz_loaded = False
         self._tz_task: asyncio.Task | None = None
+        self.store = CoachStore(data_dir / "coach.db")
+        self.heizperiode = Heizperiode(client, opts, self.store, tz=lambda: self.tz, bereit=lambda: self._tz_loaded)
+        self.coach = Coach(self, self.store, wissen_pfad)
 
     # ------------------------------------------------------------- Start
 
@@ -147,6 +163,7 @@ class KlimaStudio:
             self.tz,
         )
         self.scheduler.start()
+        self.heizperiode.start()
 
     async def stop(self) -> None:
         if self._tz_task:
@@ -155,6 +172,8 @@ class KlimaStudio:
                 await self._tz_task
         if self.scheduler:
             await self.scheduler.stop()
+        await self.heizperiode.stop()
+        self.store.close()
         await self.client.close()
 
     # ------------------------------------------------------------- Räume
@@ -255,6 +274,12 @@ async def _json_body(request: web.Request) -> dict[str, Any]:
     return body
 
 
+def _json_pflicht(request: web.Request) -> None:
+    """POST ohne Nutzdaten: Content-Type application/json verlangen (Schutz vor einfachen Formular-POSTs)."""
+    if request.content_type != "application/json":
+        raise web.HTTPUnsupportedMediaType(text="JSON erwartet")
+
+
 async def index(request: web.Request) -> web.Response:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     html = html.replace("__BASE__", ingress_base(request)).replace("__VERSION__", __version__)
@@ -280,6 +305,7 @@ async def api_info(request: web.Request) -> web.Response:
                 "notify": [f"notify.{n}" for n in ks.opts.bericht_notify],
                 "naechster": nxt,
             },
+            "coach": {"ki_entitaet": ks.opts.coach_ki_entitaet, "anwesenheit": ks.opts.coach_anwesenheit},
         }
     )
 
@@ -431,6 +457,113 @@ async def api_report_create(request: web.Request) -> web.Response:
     return web.json_response(report)
 
 
+# ------------------------------------------------------------------ Steuerung
+
+
+async def api_steuerung(request: web.Request) -> web.Response:
+    ks = _ks(request)
+    states = await ks.client.get_states()
+    by_id = {s["entity_id"]: s for s in states if "entity_id" in s}
+    rooms = await ks.rooms()
+    try:
+        heizperiode = await ks.heizperiode.status(states)
+    except (sqlite3.Error, HAError) as err:  # Raumsteuerung bleibt nutzbar
+        _LOGGER.warning("Status der Heizperiode nicht verfügbar: %s", err)
+        heizperiode = None
+    return web.json_response(
+        {
+            "raeume": {r.raum: st.raum_zustand(r, by_id, ks.opts) for r in rooms},
+            "integration": st.integration_status(by_id),
+            "heizperiode": heizperiode,
+        }
+    )
+
+
+async def api_steuerung_raum(request: web.Request) -> web.Response:
+    ks = _ks(request)
+    slug = st.pruefe_raum_slug(request.match_info["raum"])
+    room = await ks.room(slug)
+    if not st.steuerbar(room, ks.opts):
+        raise st.json_fehler(web.HTTPConflict, f"{room.name} wird nicht von PM Klima gesteuert.", "nicht_gesteuert")
+    body = await _json_body(request)
+    by_id = {s["entity_id"]: s for s in await ks.client.get_states() if "entity_id" in s}
+    cl = by_id.get(room.climate or "")
+    if cl is None or cl.get("state") in (None, "unavailable", "unknown"):
+        raise st.json_fehler(web.HTTPConflict, f"{room.climate} ist derzeit nicht verfügbar.", "nicht_verfuegbar")
+    befehl = st.pruefe_befehl(body, cl.get("attributes") or {})
+    st.pruefe_modus(befehl, cl.get("state"))
+    await ks.client.call_service(befehl["domain"], befehl["service"], {"entity_id": room.climate, **befehl["daten"]})
+    _LOGGER.info("Steuerung %s: %s", room.raum, befehl["text"])
+    await ks.store.ereignis(
+        "steuerung",
+        room.raum,
+        f"{room.name}: {befehl['text']}",
+        {"aktion": befehl["aktion"], "dienst": f"{befehl['domain']}.{befehl['service']}", **befehl["daten"]},
+    )
+    ks.coach.invalidieren()
+    by_id = {s["entity_id"]: s for s in await ks.client.get_states() if "entity_id" in s}
+    return web.json_response({"ok": True, "raum": st.raum_zustand(room, by_id, ks.opts)})
+
+
+async def api_heizperiode_get(request: web.Request) -> web.Response:
+    return web.json_response(await _ks(request).heizperiode.status())
+
+
+async def api_heizperiode_post(request: web.Request) -> web.Response:
+    ks = _ks(request)
+    body = await _json_body(request)
+    result = await ks.heizperiode.einstellen(body)
+    ks.coach.invalidieren()
+    return web.json_response(result)
+
+
+async def api_heizperiode_einrichten(request: web.Request) -> web.Response:
+    _json_pflicht(request)
+    ks = _ks(request)
+    result = await ks.heizperiode.einrichten()
+    ks.coach.invalidieren()
+    return web.json_response(result)
+
+
+# ------------------------------------------------------------------ Coach
+
+
+async def api_coach(request: web.Request) -> web.Response:
+    return web.json_response(await _ks(request).coach.uebersicht())
+
+
+async def api_coach_rueckmeldung(request: web.Request) -> web.Response:
+    body = await _json_body(request)
+    ks = _ks(request)
+    await ks.coach.rueckmeldung(body)
+    ks.coach.invalidieren()
+    return web.json_response({"ok": True})
+
+
+async def api_coach_lagebericht(request: web.Request) -> web.Response:
+    return web.json_response(await _ks(request).coach.lagebericht_antwort())
+
+
+async def api_coach_ki_post(request: web.Request) -> web.Response:
+    _json_pflicht(request)
+    return web.json_response(await _ks(request).coach.ki_lauf())
+
+
+async def api_coach_ki_liste(request: web.Request) -> web.Response:
+    return web.json_response(await _ks(request).coach.ki_laeufe())
+
+
+async def api_coach_ki_get(request: web.Request) -> web.Response:
+    return web.json_response(await _ks(request).coach.ki_lauf_lesen(request.match_info["id"]))
+
+
+async def api_ereignisse(request: web.Request) -> web.Response:
+    typ = request.query.get("typ") or None
+    if typ is not None and not EREIGNIS_TYP_RE.match(typ):
+        raise st.json_fehler(web.HTTPBadRequest, "Ungültiger Ereignistyp.", "ungueltig")
+    return web.json_response(await _ks(request).store.ereignisse(typ, 100))
+
+
 # ------------------------------------------------------------------ Aufbau
 
 
@@ -454,6 +587,18 @@ def create_app(ks: KlimaStudio, networks: list[Any] | None = None) -> web.Applic
     r.add_get("/api/berichte", api_reports)
     r.add_post("/api/berichte", api_report_create)
     r.add_get("/api/berichte/{id}", api_report_get)
+    r.add_get("/api/steuerung", api_steuerung)
+    r.add_post("/api/steuerung/{raum}", api_steuerung_raum)
+    r.add_get("/api/heizperiode", api_heizperiode_get)
+    r.add_post("/api/heizperiode", api_heizperiode_post)
+    r.add_post("/api/heizperiode/einrichten", api_heizperiode_einrichten)
+    r.add_get("/api/coach", api_coach)
+    r.add_post("/api/coach/rueckmeldung", api_coach_rueckmeldung)
+    r.add_get("/api/coach/lagebericht", api_coach_lagebericht)
+    r.add_get("/api/coach/ki", api_coach_ki_liste)
+    r.add_post("/api/coach/ki", api_coach_ki_post)
+    r.add_get("/api/coach/ki/{id}", api_coach_ki_get)
+    r.add_get("/api/ereignisse", api_ereignisse)
     r.add_static("/static", STATIC_DIR, show_index=False, append_version=False)
     return app
 

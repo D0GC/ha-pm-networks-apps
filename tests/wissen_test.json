@@ -1,0 +1,62 @@
+{
+  "version": "test-1",
+  "regeln": [
+    {
+      "id": "feuchte_anzeigen",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {"wert": "raum.feuchte", "op": ">", "ref": 0},
+      "titel": "Feuchte {raum.name}",
+      "text": "Die Feuchte in {raum.name} liegt bei {raum.feuchte} %.",
+      "begruendung": "Nassraum: {raum.nassraum}.",
+      "massnahme": {"typ": "lueften"}
+    },
+    {
+      "id": "bad_steuern",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 1,
+      "saison": "immer",
+      "wenn": {"alle": [{"wert": "raum.nassraum", "op": "==", "ref": true}, {"nicht": {"wert": "raum.modus", "op": "==", "ref": "off"}}]},
+      "titel": "Bad prüfen",
+      "text": "Soll {raum.soll} °C.",
+      "begruendung": "Test.",
+      "massnahme": {"typ": "steuerung", "aktion": "boost", "dauer": 30}
+    },
+    {
+      "id": "heizperiode_global",
+      "bereich": "global",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {"wert": "aussen.temperatur", "op": "vorhanden"},
+      "titel": "Heizperiode",
+      "text": "Außen {aussen.temperatur} °C, Raum {raum.name}.",
+      "begruendung": "Test."
+    },
+    {
+      "id": "sommer_global",
+      "bereich": "global",
+      "thema": "sommer",
+      "prioritaet": 3,
+      "saison": "sommer",
+      "wenn": {"wert": "aussen.temperatur", "op": "vorhanden"},
+      "titel": "Sommer",
+      "text": "Sommer.",
+      "begruendung": "Test."
+    },
+    {
+      "id": "nie",
+      "bereich": "raum",
+      "thema": "wartung",
+      "prioritaet": 3,
+      "saison": "immer",
+      "wenn": {"wert": "raum.slug", "op": "fehlt"},
+      "titel": "Nie",
+      "text": "Nie.",
+      "begruendung": "Test."
+    }
+  ]
+}

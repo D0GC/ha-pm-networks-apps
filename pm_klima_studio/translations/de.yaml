@@ -30,6 +30,22 @@ configuration:
   aussenfeuchte:
     name: Außenluftfeuchte
     description: Standard sensor.aussenluftfeuchte.
+  heizperiode_entitaet:
+    name: Freigabe Heizperiode
+    description: >-
+      Schalter, den die App für Heizperiode (an) und Sommer (aus) setzt. Er muss in der Integration PM Klima als Freigabe eingetragen sein. Standard input_boolean.pm_heizperiode.
+  coach_ki_entitaet:
+    name: KI-Dienst für den Klima-Coach
+    description: >-
+      ai_task-Entität für die KI-Analyse auf Anforderung. Standard ai_task.claude_ai_task.
+  coach_anwesenheit:
+    name: Anwesenheit im Lagebericht
+    description: >-
+      Personen und Anwesenheit in den Lagebericht für die KI aufnehmen.
+  wetter_entitaet:
+    name: Wettervorhersage
+    description: >-
+      weather-Entität für die Vorhersage im Klima-Coach. Standard weather.dwd_zuhause.
   log_level:
     name: Protokollstufe
     description: debug, info, warning oder error.

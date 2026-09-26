@@ -1,0 +1,2135 @@
+{
+  "version": "1.1.0",
+  "regeln": [
+    {
+      "id": "integration_pausiert",
+      "bereich": "global",
+      "thema": "heizen",
+      "prioritaet": 1,
+      "saison": "heizperiode",
+      "wenn": {
+        "wert": "integration.aktiv",
+        "op": "==",
+        "ref": false
+      },
+      "titel": "Heizungssteuerung ist pausiert",
+      "text": "Der Hauptschalter der Integration PM Klima ist ausgeschaltet. Während der Heizperiode sendet sie damit keine Befehle an die Thermostate. Pläne, Überbrückungen und Fensterabschaltung wirken nicht.",
+      "begruendung": "Die Thermostate behalten ihren letzten Wert. Räume können dadurch auskühlen oder ungeregelt weiterheizen.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "integration_gesperrt_kalt",
+      "bereich": "global",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "integration.aktiv",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "integration.gesperrt",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": "<",
+            "ref": 12
+          }
+        ]
+      },
+      "titel": "Integration sperrt trotz Heizperiode",
+      "text": "Die Heizperiode ist aktiv, die Integration meldet aber eine Sperre. Die Außentemperatur liegt bei {aussen.temperatur} °C. Räume im Zeitplanbetrieb heizen während der Sperre nicht.",
+      "begruendung": "Eine Sperre bei kühler Witterung deutet auf eine nicht eingeschaltete Freigabe oder eine falsch verknüpfte Freigabe-Entität hin.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "heizperiode_nicht_eingerichtet",
+      "bereich": "global",
+      "thema": "wartung",
+      "prioritaet": 3,
+      "saison": "immer",
+      "monate": [
+        9,
+        10,
+        11
+      ],
+      "wenn": {
+        "wert": "heizperiode.aktiv",
+        "op": "fehlt"
+      },
+      "titel": "Freigabe für die Heizperiode fehlt",
+      "text": "Für die Heizperiode ist keine Freigabe-Entität vorhanden oder ihr Zustand ist unbekannt. Sie können sie im Bereich Heizperiode einrichten und anschließend in der Integration als Freigabe eintragen.",
+      "begruendung": "Ohne Freigabe kann die Sommerautomatik die Heizung außerhalb der Heizperiode nicht sperren.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "frost_ohne_heizperiode",
+      "bereich": "global",
+      "thema": "heizen",
+      "prioritaet": 1,
+      "saison": "sommer",
+      "wenn": {
+        "eine": [
+          {
+            "wert": "wetter.min_morgen",
+            "op": "<",
+            "ref": 0
+          },
+          {
+            "wert": "wetter.min_3tage",
+            "op": "<",
+            "ref": -2
+          }
+        ]
+      },
+      "titel": "Frost erwartet, Heizung ist gesperrt",
+      "text": "Für die nächsten Tage wird Frost bis {wetter.min_3tage} °C erwartet. Die Heizperiode ist nicht aktiv, Räume im Zeitplanbetrieb heizen daher nicht.",
+      "begruendung": "Bei Frost kühlen Räume schnell aus. Kalte Außenwände begünstigen Tauwasser, in unbeheizten Bereichen können Leitungen einfrieren.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "frost_raum_aus",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 1,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "off"
+          },
+          {
+            "wert": "wetter.min_3tage",
+            "op": "<",
+            "ref": 0
+          },
+          {
+            "wert": "raum.ist",
+            "op": "<",
+            "ref": 14
+          }
+        ]
+      },
+      "titel": "Raum ausgeschaltet bei erwartetem Frost",
+      "text": "Der Raum {raum.name} ist ausgeschaltet und hat {raum.ist} °C. Für die nächsten Tage wird Frost bis {wetter.min_3tage} °C erwartet.",
+      "begruendung": "Ein ausgeschalteter Raum kühlt bei Frost weiter aus. Unter etwa 12 °C steigt das Risiko für Tauwasser an Außenwänden und für Frostschäden an Leitungen.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "auto"
+      }
+    },
+    {
+      "id": "fenster_offen_frost",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 1,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.fenster_offen",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": "<",
+            "ref": 0
+          }
+        ]
+      },
+      "titel": "Fenster offen bei Frost",
+      "text": "Im Raum {raum.name} ist ein Fenster geöffnet. Draußen hat es {aussen.temperatur} °C. Schließen Sie es nach wenigen Minuten wieder.",
+      "begruendung": "Bei Frost reichen wenige Minuten für einen vollständigen Luftwechsel. Längeres Öffnen kühlt Wände und Heizkörperumgebung aus, im Extremfall friert der Heizkörper ein.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "starker_frost_vorsorge",
+      "bereich": "global",
+      "thema": "wartung",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "wert": "wetter.min_3tage",
+        "op": "<=",
+        "ref": -8
+      },
+      "titel": "Starker Frost in den nächsten Tagen",
+      "text": "Für die nächsten Tage werden bis {wetter.min_3tage} °C erwartet. Prüfen Sie unbeheizte Räume, Außenwasserhähne und Leitungen in Außenwandnähe.",
+      "begruendung": "Leitungen in unbeheizten oder schlecht gedämmten Bereichen können bei anhaltendem starkem Frost einfrieren.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "mild_heizperiode_manuell",
+      "bereich": "global",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "heizperiode.modus",
+            "op": "==",
+            "ref": "heizperiode"
+          },
+          {
+            "wert": "aussen.tagesmittel_gestern",
+            "op": ">=",
+            "ref": 15
+          },
+          {
+            "wert": "wetter.max_morgen",
+            "op": ">=",
+            "ref": 17
+          }
+        ]
+      },
+      "titel": "Heizperiode manuell aktiv bei milder Witterung",
+      "text": "Die Heizperiode ist fest eingeschaltet. Das Tagesmittel lag gestern bei {aussen.tagesmittel_gestern} °C, morgen werden bis {wetter.max_morgen} °C erwartet. Die Automatik würde die Heizperiode bei anhaltend milder Witterung beenden.",
+      "begruendung": "Bei Tagesmitteln über der Heizgrenze decken Sonne und Abwärme im Haus den Wärmebedarf meist. Geheizt wird dann überwiegend für die Verluste.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "mild_raum_heizt",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "aussen.temperatur",
+            "op": ">=",
+            "ref": 15
+          },
+          {
+            "wert": "raum.hvac_action",
+            "op": "==",
+            "ref": "heating"
+          }
+        ]
+      },
+      "titel": "Heizung läuft bei milder Außentemperatur",
+      "text": "Im Raum {raum.name} läuft die Heizung bei {aussen.temperatur} °C Außentemperatur. Soll sind {raum.soll} °C, gemessen werden {raum.ist} °C.",
+      "begruendung": "Bei milder Witterung reicht oft eine niedrigere Solltemperatur. Jedes Grad weniger spart rund 6 % Heizenergie.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "sommer_modus_bei_kaelte",
+      "bereich": "global",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "heizperiode.modus",
+            "op": "==",
+            "ref": "sommer"
+          },
+          {
+            "wert": "aussen.tagesmittel_gestern",
+            "op": "<",
+            "ref": 10
+          }
+        ]
+      },
+      "titel": "Sommerbetrieb fest eingestellt bei Kälte",
+      "text": "Die Heizperiode ist fest auf Sommer gestellt. Das Tagesmittel lag gestern bei {aussen.tagesmittel_gestern} °C. Die Automatik würde die Heizperiode nach mehreren kühlen Tagen beginnen.",
+      "begruendung": "Bei Tagesmitteln unter der Heizgrenze kühlen Räume ohne Heizung stetig aus. Das erhöht die Feuchte an den Wänden.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "sommer_raum_kalt",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.ist",
+            "op": "<",
+            "ref": 17
+          },
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "auto"
+          },
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": false
+          }
+        ]
+      },
+      "titel": "Raum kühlt außerhalb der Heizperiode aus",
+      "text": "Im Raum {raum.name} werden {raum.ist} °C gemessen. Die Heizung ist außerhalb der Heizperiode gesperrt. Eine zeitlich begrenzte Überbrückung heizt trotz Sperre.",
+      "begruendung": "Eine Überbrückung gilt nur für die gewählte Dauer. Danach greift die Sperre wieder, ohne dass der Heizplan geändert werden muss.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "overlay",
+        "temperatur": 20,
+        "dauer": 120
+      }
+    },
+    {
+      "id": "regen_heizperiode_lueften",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "wetter.regen_morgen",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.feuchte",
+            "op": ">=",
+            "ref": 60
+          },
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": "<",
+            "ref": 10
+          }
+        ]
+      },
+      "titel": "Lüften bleibt auch bei Regen wirksam",
+      "text": "Für morgen ist Regen angekündigt. Die Luftfeuchte im Raum {raum.name} liegt bei {raum.feuchte} %. Stoßlüften senkt sie auch bei Regenwetter.",
+      "begruendung": "Kalte Außenluft enthält selbst bei hoher relativer Feuchte wenig Wasser. Erwärmt im Raum ist sie trocken und nimmt Feuchte auf.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "regen_sommer_vorher_lueften",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 3,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "wetter.regen_morgen",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.feuchte",
+            "op": ">=",
+            "ref": 60
+          },
+          {
+            "wert": "zeit.stunde",
+            "op": ">=",
+            "ref": 16
+          },
+          {
+            "wert": "zeit.stunde",
+            "op": "<=",
+            "ref": 22
+          }
+        ]
+      },
+      "titel": "Vor dem Regen lüften",
+      "text": "Für morgen ist Regen angekündigt. Die Luftfeuchte im Raum {raum.name} liegt bei {raum.feuchte} %. Lüften Sie heute Abend gründlich, solange die Außenluft trockener ist.",
+      "begruendung": "Warme Regenluft trägt viel Wasser. Lüften bei Regen bringt im Sommer eher Feuchte in den Raum, als es abführt.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "aussenluft_feuchter",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "aussen.temperatur",
+            "op": ">=",
+            "pfad": "raum.ist"
+          },
+          {
+            "wert": "aussen.feuchte",
+            "op": ">=",
+            "pfad": "raum.feuchte"
+          },
+          {
+            "wert": "raum.feuchte",
+            "op": ">=",
+            "ref": 60
+          }
+        ]
+      },
+      "titel": "Außenluft ist feuchter als die Raumluft",
+      "text": "Draußen ist es mit {aussen.temperatur} °C und {aussen.feuchte} % wärmer und feuchter als im Raum {raum.name} ({raum.ist} °C, {raum.feuchte} %). Lüften bringt derzeit zusätzliche Feuchte herein.",
+      "begruendung": "Ist die Außenluft wärmer und relativ feuchter, enthält sie mehr Wasser als die Raumluft. Lüften Sie besser in den kühlen Morgen- oder Nachtstunden.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "sommer_nachts_lueften",
+      "bereich": "raum",
+      "thema": "sommer",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.ist",
+            "op": ">=",
+            "ref": 25
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": "<",
+            "pfad": "raum.ist",
+            "plus": -3
+          },
+          {
+            "nicht": {
+              "wert": "raum.fenster_offen",
+              "op": "==",
+              "ref": true
+            }
+          }
+        ]
+      },
+      "titel": "Kühlere Außenluft zum Lüften nutzen",
+      "text": "Im Raum {raum.name} sind es {raum.ist} °C, draußen {aussen.temperatur} °C. Öffnen Sie die Fenster jetzt weit und möglichst quer, um den Raum abzukühlen.",
+      "begruendung": "Nachts und am frühen Morgen ist die Außenluft am kühlsten. Querlüften tauscht die warme Raumluft schnell aus und kühlt auch Möbel und Wände.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "sommer_fenster_hitze",
+      "bereich": "raum",
+      "thema": "sommer",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.fenster_offen",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": ">=",
+            "ref": 25
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": ">",
+            "pfad": "raum.ist",
+            "plus": 1
+          }
+        ]
+      },
+      "titel": "Fenster offen bei warmer Außenluft",
+      "text": "Im Raum {raum.name} ist ein Fenster geöffnet. Draußen ist es mit {aussen.temperatur} °C wärmer als drinnen mit {raum.ist} °C. Schließen Sie das Fenster bis zum Abend.",
+      "begruendung": "Bei Hitze erwärmen offene Fenster den Raum zusätzlich. Gelüftet wird besser, sobald es draußen kühler ist als drinnen.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "sommer_hitze_morgen",
+      "bereich": "global",
+      "thema": "sommer",
+      "prioritaet": 3,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "wetter.max_morgen",
+            "op": ">=",
+            "ref": 28
+          },
+          {
+            "wert": "zeit.stunde",
+            "op": ">=",
+            "ref": 14
+          }
+        ]
+      },
+      "titel": "Morgen wird es heiß",
+      "text": "Für morgen werden bis {wetter.max_morgen} °C erwartet. Halten Sie Fenster tagsüber geschlossen und verschatten Sie sonnenseitige Fenster von außen.",
+      "begruendung": "Außen liegender Sonnenschutz hält einen Großteil der Sonnenwärme ab. Innen liegende Vorhänge wirken deutlich schwächer.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "sommer_handbetrieb_heizt",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "heat"
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 16
+          }
+        ]
+      },
+      "titel": "Handbetrieb heizt trotz Sommerbetrieb",
+      "text": "Der Raum {raum.name} steht im Handbetrieb auf {raum.soll} °C. Die Sommersperre gilt nur für Räume im Zeitplanbetrieb, dieser Raum heizt daher weiter.",
+      "begruendung": "Räume im Handbetrieb, mit Überbrückung oder Boost werden von der Freigabe nicht gesperrt.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "auto"
+      }
+    },
+    {
+      "id": "sommer_ueberbrueckung_heizt",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.overlay_aktiv",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 18
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": ">=",
+            "ref": 15
+          }
+        ]
+      },
+      "titel": "Überbrückung heizt trotz Sommerbetrieb",
+      "text": "Im Raum {raum.name} ist eine Überbrückung auf {raum.soll} °C aktiv. Sie heizt auch außerhalb der Heizperiode.",
+      "begruendung": "Eine Überbrückung wird von der Sommersperre nicht erfasst. Bei milder Witterung ist sie meist nicht mehr nötig.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
+      "id": "sommer_ventile_bewegen",
+      "bereich": "global",
+      "thema": "wartung",
+      "prioritaet": 3,
+      "saison": "sommer",
+      "monate": [
+        7
+      ],
+      "wenn": {
+        "wert": "zeit.wochentag",
+        "op": "in",
+        "ref": [
+          5,
+          6
+        ]
+      },
+      "titel": "Thermostatventile im Sommer bewegen",
+      "text": "Stellen Sie die Thermostate im Sommer einmal kurz auf eine hohe Temperatur und danach zurück. Viele Geräte haben dafür auch einen Ventilschutz.",
+      "begruendung": "Ventilstifte, die monatelang in einer Stellung stehen, können festsitzen. Dann öffnet der Heizkörper im Herbst nicht.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "heizplaene_vor_heizperiode",
+      "bereich": "global",
+      "thema": "heizplan",
+      "prioritaet": 3,
+      "saison": "sommer",
+      "monate": [
+        9
+      ],
+      "wenn": {
+        "wert": "zeit.wochentag",
+        "op": "in",
+        "ref": [
+          5,
+          6
+        ]
+      },
+      "titel": "Heizpläne vor der Heizperiode prüfen",
+      "text": "Die Heizperiode beginnt bald. Prüfen Sie, ob die Heizpläne noch zu Ihren Zeiten passen, etwa nach geänderten Arbeitszeiten.",
+      "begruendung": "Ein passender Plan heizt nur, wenn die Räume genutzt werden. Das spart Energie, ohne den Komfort zu mindern.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "heizkoerper_entlueften",
+      "bereich": "global",
+      "thema": "wartung",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "monate": [
+        9,
+        10
+      ],
+      "wenn": {
+        "wert": "zeit.wochentag",
+        "op": "in",
+        "ref": [
+          5,
+          6
+        ]
+      },
+      "titel": "Heizkörper zu Beginn der Heizperiode entlüften",
+      "text": "Die Heizperiode hat begonnen. Entlüften Sie Heizkörper, die gluckern oder oben kühler bleiben als unten.",
+      "begruendung": "Luft im Heizkörper verringert die wärmeabgebende Fläche. Der Raum erreicht die Solltemperatur dann langsamer oder gar nicht.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "thermostat_batterien",
+      "bereich": "global",
+      "thema": "wartung",
+      "prioritaet": 3,
+      "saison": "immer",
+      "monate": [
+        10
+      ],
+      "wenn": {
+        "wert": "zeit.wochentag",
+        "op": "==",
+        "ref": 6
+      },
+      "titel": "Batterien der Thermostate prüfen",
+      "text": "Prüfen Sie vor dem Winter den Batteriestand der Heizkörperthermostate und tauschen Sie schwache Batterien.",
+      "begruendung": "Ein Thermostat mit leerer Batterie regelt nicht mehr. Je nach Gerät bleibt das Ventil dann offen oder geschlossen.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "heizkoerper_frei",
+      "bereich": "global",
+      "thema": "wartung",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "monate": [
+        11
+      ],
+      "wenn": {
+        "wert": "zeit.wochentag",
+        "op": "in",
+        "ref": [
+          5,
+          6
+        ]
+      },
+      "titel": "Heizkörper frei halten",
+      "text": "Halten Sie Heizkörper frei von Möbeln, Vorhängen und Verkleidungen. Das Thermostat braucht freie Luft, um die Raumtemperatur richtig zu messen.",
+      "begruendung": "Verdeckte Heizkörper geben weniger Wärme an den Raum ab. Das Thermostat misst dann einen Wärmestau und regelt zu früh ab.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "rolllaeden_nachts",
+      "bereich": "global",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "monate": [
+        12,
+        1,
+        2
+      ],
+      "wenn": {
+        "alle": [
+          {
+            "wert": "zeit.stunde",
+            "op": ">=",
+            "ref": 17
+          },
+          {
+            "wert": "zeit.stunde",
+            "op": "<=",
+            "ref": 22
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": "<",
+            "ref": 3
+          }
+        ]
+      },
+      "titel": "Rollläden am Abend schließen",
+      "text": "Draußen hat es {aussen.temperatur} °C. Geschlossene Rollläden und Vorhänge verringern über Nacht die Wärmeverluste über die Fenster.",
+      "begruendung": "Die ruhende Luftschicht zwischen Rollladen und Fenster wirkt als zusätzliche Dämmung. Achten Sie darauf, dass Vorhänge den Heizkörper nicht verdecken.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "tueren_schliessen",
+      "bereich": "global",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "monate": [
+        12,
+        1
+      ],
+      "wenn": {
+        "wert": "zeit.wochentag",
+        "op": "==",
+        "ref": 6
+      },
+      "titel": "Türen zu kühleren Räumen schließen",
+      "text": "Halten Sie Türen zwischen warmen und kühlen Räumen geschlossen, zum Beispiel zwischen Wohnzimmer und Schlafzimmer.",
+      "begruendung": "Warme Luft trägt Feuchte in kühlere Räume. Dort kann sie sich an kalten Wänden niederschlagen, zudem wärmen Sie den kühlen Raum ungewollt mit.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "wohnraum_plan_zu_warm",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "alle": [
+              {
+                "wert": "raum.nassraum",
+                "op": "==",
+                "ref": false
+              },
+              {
+                "wert": "raum.schlafraum",
+                "op": "==",
+                "ref": false
+              }
+            ]
+          },
+          {
+            "wert": "raum.plan.max_temp",
+            "op": ">",
+            "ref": 22
+          }
+        ]
+      },
+      "titel": "Heizplan sieht hohe Temperatur vor",
+      "text": "Der Heizplan im Raum {raum.name} sieht bis zu {raum.plan.max_temp} °C vor. Für Wohnräume reichen meist 20 bis 21 °C.",
+      "begruendung": "Jedes Grad weniger Raumtemperatur spart rund 6 % Heizenergie.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "wohnraum_plan_zu_kalt",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "alle": [
+              {
+                "wert": "raum.nassraum",
+                "op": "==",
+                "ref": false
+              },
+              {
+                "wert": "raum.schlafraum",
+                "op": "==",
+                "ref": false
+              }
+            ]
+          },
+          {
+            "wert": "raum.plan.max_temp",
+            "op": "<",
+            "ref": 19
+          },
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": false
+          }
+        ]
+      },
+      "titel": "Heizplan sieht wenig Wärme vor",
+      "text": "Der höchste Wert im Heizplan des Raums {raum.name} liegt bei {raum.plan.max_temp} °C. Für genutzte Wohnräume sind 20 bis 21 °C üblich.",
+      "begruendung": "Dauerhaft kühle Wohnräume sind weniger behaglich. Die Wände bleiben kalt, und die Feuchte an ihnen steigt.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "schlafraum_plan_zu_warm",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.schlafraum",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.plan.max_temp",
+            "op": ">",
+            "ref": 19
+          }
+        ]
+      },
+      "titel": "Schlafzimmer wird wärmer als nötig geheizt",
+      "text": "Der Heizplan im Raum {raum.name} sieht bis zu {raum.plan.max_temp} °C vor. Für Schlafräume gelten 16 bis 18 °C als angenehm.",
+      "begruendung": "Kühlere Schlafräume fördern den Schlaf und sparen Energie. Jedes Grad weniger spart rund 6 % Heizenergie.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "bad_plan_zu_kalt",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.plan.max_temp",
+            "op": "<",
+            "ref": 21
+          },
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": false
+          }
+        ]
+      },
+      "titel": "Bad wird zur Nutzung kaum geheizt",
+      "text": "Der höchste Wert im Heizplan des Raums {raum.name} liegt bei {raum.plan.max_temp} °C. Zum Duschen und Baden sind 22 bis 23 °C üblich.",
+      "begruendung": "Ein warmes Bad nimmt die Feuchte beim Duschen besser auf und trocknet schneller ab. Es genügt, die Wärme auf die Nutzungszeiten zu legen.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "bad_plan_zu_warm",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.plan.max_temp",
+            "op": ">",
+            "ref": 24
+          }
+        ]
+      },
+      "titel": "Bad wird sehr warm geheizt",
+      "text": "Der Heizplan im Raum {raum.name} sieht bis zu {raum.plan.max_temp} °C vor. Für die Nutzungszeiten reichen meist 22 bis 23 °C.",
+      "begruendung": "Jedes Grad weniger spart rund 6 % Heizenergie. Außerhalb der Nutzung genügt eine niedrigere Temperatur.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "plan_ohne_absenkung",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.plan.stunden_woche",
+            "op": ">=",
+            "ref": 150
+          },
+          {
+            "wert": "raum.plan.min_temp",
+            "op": ">",
+            "pfad": "raum.plan.max_temp",
+            "plus": -1
+          },
+          {
+            "wert": "raum.plan.max_temp",
+            "op": ">=",
+            "ref": 19
+          }
+        ]
+      },
+      "titel": "Heizplan ohne Absenkung",
+      "text": "Der Heizplan im Raum {raum.name} heizt {raum.plan.stunden_woche} Stunden pro Woche auf nahezu gleicher Temperatur. Eine Absenkung in der Nacht und bei Abwesenheit fehlt.",
+      "begruendung": "Eine Absenkung um 3 bis 4 Grad in ungenutzten Zeiten senkt den Verbrauch spürbar. Unter 16 °C sollte die Temperatur in Wohnräumen nicht fallen.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "plan_viele_stunden",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.plan.stunden_woche",
+            "op": ">",
+            "ref": 112
+          },
+          {
+            "nicht": {
+              "wert": "raum.plan.stunden_woche",
+              "op": ">=",
+              "ref": 150
+            }
+          }
+        ]
+      },
+      "titel": "Heizplan mit langen Heizzeiten",
+      "text": "Der Heizplan im Raum {raum.name} umfasst {raum.plan.stunden_woche} Heizstunden pro Woche. Prüfen Sie, ob der Raum in dieser Zeit tatsächlich genutzt wird.",
+      "begruendung": "Kürzere Heizblöcke, die sich an der tatsächlichen Nutzung orientieren, sparen Energie ohne Komfortverlust.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "plan_heizt_nachts",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.plan.nacht",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.schlafraum",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "nicht": {
+              "wert": "raum.plan.stunden_woche",
+              "op": ">=",
+              "ref": 150
+            }
+          }
+        ]
+      },
+      "titel": "Heizplan heizt in der Nacht",
+      "text": "Der Heizplan im Raum {raum.name} enthält zwischen 1 und 4 Uhr einen Heizblock mit mindestens 18 °C. In dieser Zeit wird der Raum in der Regel nicht genutzt.",
+      "begruendung": "Nachts genügt eine abgesenkte Temperatur. Der Raum wird am Morgen rechtzeitig vor der Nutzung wieder aufgeheizt.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "plan_leer",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "auto"
+          }
+        ]
+      },
+      "titel": "Heizplan ohne Einträge",
+      "text": "Der Raum {raum.name} steht im Zeitplanbetrieb, sein Heizplan enthält aber keine Heizblöcke. Der Raum wird damit nicht auf Komforttemperatur geheizt.",
+      "begruendung": "Im Zeitplanbetrieb richtet sich die Heizung nur nach dem Plan. Ohne Blöcke bleibt der Raum dauerhaft auf der Grundtemperatur.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "plan_tage_ohne_block",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.plan.tage_ohne_block",
+            "op": ">=",
+            "ref": 1
+          },
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "auto"
+          }
+        ]
+      },
+      "titel": "Heizplan hat Tage ohne Heizblock",
+      "text": "Im Heizplan des Raums {raum.name} haben {raum.plan.tage_ohne_block} Wochentage keinen Heizblock. Prüfen Sie, ob das beabsichtigt ist.",
+      "begruendung": "An Tagen ohne Block wird der Raum nicht auf Komforttemperatur geheizt. Das ist bei ungenutzten Tagen sinnvoll, sonst meist ein Versehen.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "ueberbrueckung_dauerhaft",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "wert": "raum.overlay_dauerhaft",
+        "op": "==",
+        "ref": true
+      },
+      "titel": "Dauerhafte Überbrückung aktiv",
+      "text": "Im Raum {raum.name} gilt eine dauerhafte Überbrückung auf {raum.soll} °C. Der Heizplan mit {raum.zeitplan_temperatur} °C ist damit außer Kraft.",
+      "begruendung": "Eine dauerhafte Überbrückung endet nicht von selbst. Nachtabsenkung und Planzeiten greifen erst wieder, wenn Sie sie beenden.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
+      "id": "ueberbrueckung_hoch",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.overlay_aktiv",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "nicht": {
+              "wert": "raum.overlay_dauerhaft",
+              "op": "==",
+              "ref": true
+            }
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 23.5
+          },
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "nicht": {
+              "wert": "anwesenheit.jemand_zuhause",
+              "op": "==",
+              "ref": false
+            }
+          }
+        ]
+      },
+      "titel": "Überbrückung mit hoher Temperatur",
+      "text": "Im Raum {raum.name} ist eine Überbrückung auf {raum.soll} °C aktiv. Laut Plan wären es {raum.zeitplan_temperatur} °C.",
+      "begruendung": "Ein höherer Sollwert heizt den Raum nicht schneller auf, er verlängert nur die Heizzeit. Jedes Grad mehr kostet rund 6 % Heizenergie.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
+      "id": "handbetrieb_dauerhaft",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "heat"
+          },
+          {
+            "nicht": {
+              "wert": "anwesenheit.jemand_zuhause",
+              "op": "==",
+              "ref": false
+            }
+          }
+        ]
+      },
+      "titel": "Raum im Handbetrieb",
+      "text": "Der Raum {raum.name} steht im Handbetrieb auf {raum.soll} °C. Der Heizplan und die Nachtabsenkung sind damit außer Kraft.",
+      "begruendung": "Im Handbetrieb hält die Heizung den Wert rund um die Uhr. Im Zeitplanbetrieb wird nur zu den Nutzungszeiten geheizt.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "auto"
+      }
+    },
+    {
+      "id": "boost_aktiv",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 3,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.boost_aktiv",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "nicht": {
+              "wert": "anwesenheit.jemand_zuhause",
+              "op": "==",
+              "ref": false
+            }
+          }
+        ]
+      },
+      "titel": "Boost ist aktiv",
+      "text": "Im Raum {raum.name} läuft ein Boost mit Höchsttemperatur. Er endet automatisch nach der eingestellten Dauer.",
+      "begruendung": "Ein Boost öffnet das Ventil vollständig. Für eine gezielte Temperatur eignet sich eine Überbrückung besser.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
+      "id": "raum_aus_feucht",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "off"
+          },
+          {
+            "eine": [
+              {
+                "wert": "raum.feuchte",
+                "op": ">=",
+                "ref": 65
+              },
+              {
+                "wert": "raum.schimmel",
+                "op": ">=",
+                "ref": 70
+              }
+            ]
+          }
+        ]
+      },
+      "titel": "Ausgeschalteter Raum ist feucht",
+      "text": "Der Raum {raum.name} ist ausgeschaltet. Die Luftfeuchte liegt bei {raum.feuchte} %, die Wandfeuchte bei {raum.schimmel} %.",
+      "begruendung": "Ein unbeheizter Raum kühlt an den Wänden stark ab. Feuchte aus der Wohnung schlägt sich dort nieder und begünstigt Schimmel.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "auto"
+      }
+    },
+    {
+      "id": "raum_aus_kalt",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "off"
+          },
+          {
+            "wert": "raum.ist",
+            "op": "<",
+            "ref": 15
+          },
+          {
+            "nicht": {
+              "wert": "raum.feuchte",
+              "op": ">=",
+              "ref": 65
+            }
+          },
+          {
+            "nicht": {
+              "wert": "raum.schimmel",
+              "op": ">=",
+              "ref": 70
+            }
+          },
+          {
+            "nicht": {
+              "wert": "wetter.min_3tage",
+              "op": "<",
+              "ref": 0
+            }
+          }
+        ]
+      },
+      "titel": "Ausgeschalteter Raum kühlt aus",
+      "text": "Der Raum {raum.name} ist ausgeschaltet und hat {raum.ist} °C. In der Heizperiode sollte er nicht dauerhaft unter 16 °C fallen.",
+      "begruendung": "Kalte Wände nehmen Feuchte aus der Wohnungsluft auf. Das Wiederaufheizen eines ausgekühlten Raums dauert zudem lange.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "auto"
+      }
+    },
+    {
+      "id": "soll_nicht_erreicht",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.soll_ist_abstand",
+            "op": ">=",
+            "ref": 3
+          },
+          {
+            "wert": "raum.hvac_action",
+            "op": "==",
+            "ref": "heating"
+          },
+          {
+            "nicht": {
+              "wert": "raum.boost_aktiv",
+              "op": "==",
+              "ref": true
+            }
+          },
+          {
+            "nicht": {
+              "wert": "raum.fenster_offen",
+              "op": "==",
+              "ref": true
+            }
+          }
+        ]
+      },
+      "titel": "Raum erreicht die Solltemperatur nicht",
+      "text": "Im Raum {raum.name} sind es {raum.ist} °C bei {raum.soll} °C Soll. Der Abstand beträgt {raum.soll_ist_abstand} Grad.",
+      "begruendung": "Bleibt der Abstand über Stunden bestehen, ist der Heizkörper oft nicht entlüftet, das Ventil sitzt fest oder das Thermostat hat keinen Kontakt. Prüfen Sie, ob der Heizkörper oben warm wird.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "raum_waermer_als_soll",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.soll_ist_abstand",
+            "op": "<=",
+            "ref": -3
+          },
+          {
+            "wert": "raum.ist",
+            "op": ">=",
+            "ref": 23
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": "<",
+            "ref": 15
+          }
+        ]
+      },
+      "titel": "Raum deutlich wärmer als eingestellt",
+      "text": "Im Raum {raum.name} werden {raum.ist} °C gemessen, eingestellt sind {raum.soll} °C.",
+      "begruendung": "Ursache sind oft offene Türen zu wärmeren Räumen, Sonneneinstrahlung oder ein Ventil, das nicht vollständig schließt.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
+      "id": "heizstunden_hoch",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.heizstunden",
+            "op": ">",
+            "ref": 84
+          },
+          {
+            "wert": "aussen.tagesmittel_gestern",
+            "op": ">",
+            "ref": 5
+          }
+        ]
+      },
+      "titel": "Viele Heizstunden in der letzten Woche",
+      "text": "Die Heizung im Raum {raum.name} lief in den letzten sieben Tagen {raum.woche.heizstunden} Stunden. Das sind im Mittel mehr als zwölf Stunden am Tag.",
+      "begruendung": "Bei nicht sehr kalter Witterung deutet das auf lange Heizzeiten im Plan, hohe Sollwerte oder häufig offene Fenster hin.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "abwesend_handbetrieb",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "anwesenheit.jemand_zuhause",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "heat"
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 18
+          }
+        ]
+      },
+      "titel": "Niemand zu Hause, Raum im Handbetrieb",
+      "text": "Es ist niemand zu Hause. Der Raum {raum.name} heizt im Handbetrieb auf {raum.soll} °C.",
+      "begruendung": "Im Handbetrieb heizt der Raum unabhängig von Plan und Anwesenheit. Im Zeitplanbetrieb gilt die geplante Absenkung.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "auto"
+      }
+    },
+    {
+      "id": "abwesend_boost",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "anwesenheit.jemand_zuhause",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "wert": "raum.boost_aktiv",
+            "op": "==",
+            "ref": true
+          }
+        ]
+      },
+      "titel": "Niemand zu Hause, Boost aktiv",
+      "text": "Es ist niemand zu Hause. Im Raum {raum.name} läuft ein Boost mit Höchsttemperatur.",
+      "begruendung": "Ein Boost heizt mit voller Leistung. Ohne Anwesenheit ist das nicht nötig.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
+      "id": "abwesend_fenster_offen",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "anwesenheit.jemand_zuhause",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "wert": "raum.fenster_offen",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "nicht": {
+              "wert": "aussen.temperatur",
+              "op": "<",
+              "ref": 0
+            }
+          }
+        ]
+      },
+      "titel": "Niemand zu Hause, Fenster offen",
+      "text": "Es ist niemand zu Hause. Im Raum {raum.name} ist ein Fenster geöffnet.",
+      "begruendung": "Ein offenes Fenster kühlt den Raum während der Abwesenheit aus. Bei Regen oder Sturm kann zudem Wasser eindringen.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "fenster_offen_heizung_laeuft",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.fenster_offen",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.hvac_action",
+            "op": "==",
+            "ref": "heating"
+          },
+          {
+            "nicht": {
+              "wert": "aussen.temperatur",
+              "op": "<",
+              "ref": 0
+            }
+          },
+          {
+            "nicht": {
+              "wert": "anwesenheit.jemand_zuhause",
+              "op": "==",
+              "ref": false
+            }
+          }
+        ]
+      },
+      "titel": "Heizung läuft bei offenem Fenster",
+      "text": "Im Raum {raum.name} ist ein Fenster geöffnet, und die Heizung läuft.",
+      "begruendung": "Die Wärme entweicht direkt nach draußen. Prüfen Sie, ob der Fensterkontakt richtig zugeordnet ist, oder schließen Sie das Fenster nach dem Lüften.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "kipplueften",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.fenster_laengste_min",
+            "op": ">=",
+            "ref": 45
+          },
+          {
+            "nicht": {
+              "wert": "raum.woche.fenster_offen_stunden",
+              "op": ">=",
+              "ref": 10
+            }
+          }
+        ]
+      },
+      "titel": "Stoßlüften statt Kippstellung",
+      "text": "Im Raum {raum.name} war ein Fenster in der letzten Woche bis zu {raum.woche.fenster_laengste_min} Minuten am Stück geöffnet. Lüften Sie besser mehrmals täglich 5 bis 10 Minuten mit weit geöffnetem Fenster.",
+      "begruendung": "Ein gekipptes Fenster tauscht die Luft nur langsam aus, kühlt aber Sturz und Laibung stark ab. Dort bildet sich dann leicht Schimmel.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "fenster_viele_stunden",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "wert": "raum.woche.fenster_offen_stunden",
+        "op": ">=",
+        "ref": 10
+      },
+      "titel": "Fenster in der Heizperiode lange offen",
+      "text": "Die Fenster im Raum {raum.name} waren in der letzten Woche insgesamt {raum.woche.fenster_offen_stunden} Stunden geöffnet.",
+      "begruendung": "Für einen vollständigen Luftwechsel genügen im Winter wenige Minuten. Dauerhaft offene Fenster kosten viel Heizenergie und kühlen die Wände aus.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "lueftung_gering",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.lueftung_bewertung",
+            "op": "==",
+            "ref": "gering"
+          },
+          {
+            "eine": [
+              {
+                "wert": "raum.woche.feuchte_stunden_70",
+                "op": ">=",
+                "ref": 10
+              },
+              {
+                "wert": "raum.woche.co2_stunden_1000",
+                "op": ">=",
+                "ref": 10
+              }
+            ]
+          }
+        ]
+      },
+      "titel": "Lüften zeigt wenig Wirkung",
+      "text": "Das Lüften im Raum {raum.name} hat die Raumluft in der letzten Woche kaum verbessert. Öffnen Sie die Fenster vollständig und lüften Sie nach Möglichkeit quer.",
+      "begruendung": "Querlüften mit gegenüberliegenden Fenstern tauscht die Raumluft in wenigen Minuten aus. Gekippte Fenster erreichen das nicht.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "lueftung_selten",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.lueftung_anzahl",
+            "op": "<",
+            "ref": 7
+          },
+          {
+            "wert": "raum.woche.feuchte_mittel",
+            "op": ">=",
+            "ref": 55
+          },
+          {
+            "nicht": {
+              "wert": "raum.woche.lueftung_bewertung",
+              "op": "==",
+              "ref": "gering"
+            }
+          }
+        ]
+      },
+      "titel": "Selten gelüftet",
+      "text": "Im Raum {raum.name} wurde in der letzten Woche {raum.woche.lueftung_anzahl} Mal gelüftet. Die mittlere Luftfeuchte lag bei {raum.woche.feuchte_mittel} %.",
+      "begruendung": "Zwei- bis dreimal täglich kurz stoßlüften führt die Feuchte ab, die beim Wohnen entsteht.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "lueften_empfohlen",
+      "bereich": "raum",
+      "thema": "lueften",
+      "prioritaet": 3,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.lueften_empfohlen",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "nicht": {
+              "wert": "raum.fenster_offen",
+              "op": "==",
+              "ref": true
+            }
+          },
+          {
+            "nicht": {
+              "wert": "raum.feuchte",
+              "op": ">=",
+              "ref": 70
+            }
+          },
+          {
+            "nicht": {
+              "wert": "raum.co2",
+              "op": ">=",
+              "ref": 1000
+            }
+          },
+          {
+            "nicht": {
+              "wert": "raum.schimmel",
+              "op": ">=",
+              "ref": 70
+            }
+          }
+        ]
+      },
+      "titel": "Jetzt lüften",
+      "text": "Für den Raum {raum.name} wird jetzt Lüften empfohlen. Die Luftfeuchte liegt bei {raum.feuchte} %.",
+      "begruendung": "Die Außenluft ist derzeit geeignet, Feuchte und verbrauchte Luft abzuführen.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "co2_sehr_hoch",
+      "bereich": "raum",
+      "thema": "co2",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "wert": "raum.co2",
+        "op": ">=",
+        "ref": 1400
+      },
+      "titel": "Verbrauchte Luft im Raum",
+      "text": "Der CO2-Wert im Raum {raum.name} liegt bei {raum.co2} ppm. Lüften Sie einige Minuten mit weit geöffnetem Fenster.",
+      "begruendung": "Werte über 1400 ppm gelten als Zeichen deutlich verbrauchter Luft. Konzentration und Wohlbefinden lassen dann spürbar nach.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "co2_erhoeht",
+      "bereich": "raum",
+      "thema": "co2",
+      "prioritaet": 3,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.co2",
+            "op": ">=",
+            "ref": 1000
+          },
+          {
+            "wert": "raum.co2",
+            "op": "<",
+            "ref": 1400
+          }
+        ]
+      },
+      "titel": "CO2-Wert erhöht",
+      "text": "Der CO2-Wert im Raum {raum.name} liegt bei {raum.co2} ppm. Beim nächsten Lüften ist der Raum an der Reihe.",
+      "begruendung": "Bis etwa 1000 ppm gilt die Raumluft als gut. Darüber empfiehlt sich ein Luftwechsel.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "co2_woche_1400",
+      "bereich": "raum",
+      "thema": "co2",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.co2_stunden_1400",
+            "op": ">=",
+            "ref": 5
+          },
+          {
+            "wert": "raum.schlafraum",
+            "op": "==",
+            "ref": false
+          }
+        ]
+      },
+      "titel": "Häufig stark verbrauchte Luft",
+      "text": "Im Raum {raum.name} lag der CO2-Wert in der letzten Woche {raum.woche.co2_stunden_1400} Stunden über 1400 ppm.",
+      "begruendung": "Regelmäßig hohe Werte zeigen, dass bei Nutzung zu selten gelüftet wird. Lüften Sie vor und während längerer Aufenthalte.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "co2_woche_1000",
+      "bereich": "raum",
+      "thema": "co2",
+      "prioritaet": 3,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.co2_stunden_1000",
+            "op": ">=",
+            "ref": 20
+          },
+          {
+            "nicht": {
+              "wert": "raum.woche.co2_stunden_1400",
+              "op": ">=",
+              "ref": 5
+            }
+          }
+        ]
+      },
+      "titel": "CO2-Wert oft über 1000 ppm",
+      "text": "Im Raum {raum.name} lag der CO2-Wert in der letzten Woche {raum.woche.co2_stunden_1000} Stunden über 1000 ppm.",
+      "begruendung": "Ein zusätzliches kurzes Stoßlüften am Tag hält die Werte meist dauerhaft darunter.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "co2_schlafzimmer_nacht",
+      "bereich": "raum",
+      "thema": "co2",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.schlafraum",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.woche.co2_max",
+            "op": ">=",
+            "ref": 1600
+          }
+        ]
+      },
+      "titel": "Schlafzimmerluft nachts verbraucht",
+      "text": "Im Raum {raum.name} stieg der CO2-Wert in der letzten Woche bis {raum.woche.co2_max} ppm. Lüften Sie vor dem Schlafengehen und lassen Sie die Tür einen Spalt offen, wenn der Nachbarraum nicht deutlich wärmer ist.",
+      "begruendung": "Im geschlossenen Schlafzimmer steigt der CO2-Wert über die Nacht stetig an. Gründliches Lüften am Abend verschiebt den Anstieg deutlich.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "luftqualitaet_schlecht",
+      "bereich": "raum",
+      "thema": "co2",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.luftqualitaet",
+            "op": "==",
+            "ref": "schlecht"
+          },
+          {
+            "wert": "raum.co2",
+            "op": "fehlt"
+          }
+        ]
+      },
+      "titel": "Schlechte Luftqualität gemessen",
+      "text": "Der Luftqualitätssensor im Raum {raum.name} meldet schlechte Luft. Lüften Sie einige Minuten mit weit geöffnetem Fenster.",
+      "begruendung": "Kochen, Reinigungsmittel und neue Möbel geben flüchtige Stoffe ab. Ein vollständiger Luftwechsel senkt ihre Konzentration schnell.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "schimmel_akut",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 1,
+      "saison": "immer",
+      "wenn": {
+        "wert": "raum.schimmel",
+        "op": ">=",
+        "ref": 80
+      },
+      "titel": "Schimmelgefahr an den Wänden",
+      "text": "Die Wandfeuchte im Raum {raum.name} liegt bei {raum.schimmel} %. Lüften Sie mehrmals kurz und halten Sie den Raum durchgehend warm.",
+      "begruendung": "Ab etwa 80 % Feuchte an der Wandoberfläche über mehrere Tage kann Schimmel wachsen. Wärmere Wände und trockenere Luft senken diesen Wert.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "schimmel_erhoeht",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.schimmel",
+            "op": ">=",
+            "ref": 70
+          },
+          {
+            "wert": "raum.schimmel",
+            "op": "<",
+            "ref": 80
+          }
+        ]
+      },
+      "titel": "Wandfeuchte erhöht",
+      "text": "Die Wandfeuchte im Raum {raum.name} liegt bei {raum.schimmel} %. Die Luftfeuchte beträgt {raum.feuchte} % bei {raum.ist} °C. Lüften Sie mehrmals täglich kurz mit weit geöffnetem Fenster.",
+      "begruendung": "Oberhalb von 70 % Wandfeuchte ist Vorsicht geboten. Regelmäßiges Stoßlüften und eine gleichmäßige Beheizung halten die Wände trockener.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "schimmel_woche_80",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 1,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.schimmel_stunden_80",
+            "op": ">=",
+            "ref": 24
+          },
+          {
+            "nicht": {
+              "wert": "raum.schimmel",
+              "op": ">=",
+              "ref": 80
+            }
+          }
+        ]
+      },
+      "titel": "Wand war lange sehr feucht",
+      "text": "Die Wandfeuchte im Raum {raum.name} lag in der letzten Woche {raum.woche.schimmel_stunden_80} Stunden über 80 %.",
+      "begruendung": "Schimmel wächst, wenn die Wandoberfläche über längere Zeit sehr feucht ist. Prüfen Sie Ecken und Stellen hinter Möbeln und lüften und heizen Sie regelmäßiger.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "schimmel_woche_70",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.schimmel_stunden_70",
+            "op": ">=",
+            "ref": 48
+          },
+          {
+            "nicht": {
+              "wert": "raum.schimmel",
+              "op": ">=",
+              "ref": 70
+            }
+          },
+          {
+            "nicht": {
+              "wert": "raum.woche.schimmel_stunden_80",
+              "op": ">=",
+              "ref": 24
+            }
+          }
+        ]
+      },
+      "titel": "Wandfeuchte häufig erhöht",
+      "text": "Die Wandfeuchte im Raum {raum.name} lag in der letzten Woche {raum.woche.schimmel_stunden_70} Stunden über 70 %. Der Höchstwert betrug {raum.woche.schimmel_max} %.",
+      "begruendung": "Häufig erhöhte Wandfeuchte deutet auf zu wenig Luftwechsel oder zu kühle Außenwände hin.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "feuchte_woche_70",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.woche.feuchte_stunden_70",
+            "op": ">=",
+            "ref": 24
+          },
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": false
+          }
+        ]
+      },
+      "titel": "Luftfeuchte oft über 70 %",
+      "text": "Die Luftfeuchte im Raum {raum.name} lag in der letzten Woche {raum.woche.feuchte_stunden_70} Stunden über 70 %. Der Mittelwert betrug {raum.woche.feuchte_mittel} %.",
+      "begruendung": "In Wohnräumen gelten 40 bis 60 % als günstig. Dauerhaft höhere Werte erhöhen das Schimmelrisiko.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "feuchte_jetzt_hoch",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.feuchte",
+            "op": ">=",
+            "ref": 70
+          },
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "nicht": {
+              "wert": "raum.schimmel",
+              "op": ">=",
+              "ref": 70
+            }
+          },
+          {
+            "nicht": {
+              "alle": [
+                {
+                  "wert": "aussen.temperatur",
+                  "op": ">=",
+                  "pfad": "raum.ist"
+                },
+                {
+                  "wert": "aussen.feuchte",
+                  "op": ">=",
+                  "pfad": "raum.feuchte"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "titel": "Luftfeuchte hoch",
+      "text": "Die Luftfeuchte im Raum {raum.name} liegt bei {raum.feuchte} %. Lüften Sie einige Minuten mit weit geöffnetem Fenster.",
+      "begruendung": "Hohe Luftfeuchte schlägt sich an den kühlsten Stellen des Raums nieder, meist in Außenecken und an Fensterlaibungen.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "bad_nach_duschen",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.feuchte",
+            "op": ">=",
+            "ref": 75
+          }
+        ]
+      },
+      "titel": "Bad nach dem Duschen lüften",
+      "text": "Die Luftfeuchte im Raum {raum.name} liegt bei {raum.feuchte} %. Lüften Sie 10 bis 15 Minuten mit weit geöffnetem Fenster oder Lüfter und halten Sie die Tür zur Wohnung geschlossen.",
+      "begruendung": "So gelangt die Feuchte nach draußen statt in kühlere Räume. Das Abziehen nasser Fliesen verkürzt die Trocknungszeit zusätzlich.",
+      "massnahme": {
+        "typ": "lueften"
+      }
+    },
+    {
+      "id": "bad_trocknet_nicht",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.woche.feuchte_stunden_80",
+            "op": ">=",
+            "ref": 20
+          }
+        ]
+      },
+      "titel": "Bad trocknet schlecht ab",
+      "text": "Die Luftfeuchte im Raum {raum.name} lag in der letzten Woche {raum.woche.feuchte_stunden_80} Stunden über 80 %.",
+      "begruendung": "Nach dem Duschen sollte die Feuchte innerhalb von etwa einer Stunde deutlich sinken. Längere Phasen deuten auf zu kurzes Lüften oder ein zu kühles Bad hin.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "schlafraum_kuehl_feucht",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.schlafraum",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.ist",
+            "op": "<",
+            "ref": 17
+          },
+          {
+            "wert": "raum.feuchte",
+            "op": ">=",
+            "ref": 60
+          }
+        ]
+      },
+      "titel": "Kühles Schlafzimmer mit hoher Feuchte",
+      "text": "Im Raum {raum.name} sind es {raum.ist} °C bei {raum.feuchte} % Luftfeuchte. Lüften Sie morgens gründlich und halten Sie die Tür zu wärmeren Räumen geschlossen.",
+      "begruendung": "Warme, feuchte Luft aus anderen Räumen kondensiert an den kühlen Wänden des Schlafzimmers. Die Temperatur sollte nicht dauerhaft unter 16 °C sinken.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
+      "id": "luft_zu_trocken",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "eine": [
+          {
+            "wert": "raum.feuchte",
+            "op": "<",
+            "ref": 30
+          },
+          {
+            "wert": "raum.woche.feuchte_mittel",
+            "op": "<",
+            "ref": 35
+          }
+        ]
+      },
+      "titel": "Raumluft sehr trocken",
+      "text": "Die Luftfeuchte im Raum {raum.name} liegt bei {raum.feuchte} %, im Wochenmittel bei {raum.woche.feuchte_mittel} %. Lüften Sie bei Frost kurz und vermeiden Sie hohe Raumtemperaturen.",
+      "begruendung": "Sehr trockene Luft reizt Schleimhäute und Augen. Kalte Außenluft ist sehr trocken, langes Lüften senkt die Raumfeuchte zusätzlich.",
+      "massnahme": {
+        "typ": "info"
+      }
+    }
+  ]
+}

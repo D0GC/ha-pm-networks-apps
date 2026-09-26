@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 – 2026-09-26
+
+- Neuer Reiter „Steuerung“: je Raum Betriebsart Auto, Hand oder Aus, zeitweise Temperatur (bis Planwechsel, 1 h, 3 h, dauerhaft; nur in Auto), Handwert, Boost (30, 60, 120 min) und „Zurück zum Plan“. Alle Befehle laufen über die Integration PM Klima; Klima Studio schaltet keine Thermostate selbst.
+- Heizperiode und Sommerbetrieb: Klima Studio schaltet eine Freigabe-Entität (Standard `input_boolean.pm_heizperiode`), die in der Integration als Freigabe eingetragen wird. Modi Automatik, Heizperiode, Sommer. Automatik nach Tagesmittel der Außentemperatur (Heizgrenze 13 °C, Hysterese 2 K, 2 Tage bis Beginn, 3 Tage bis Ende, einstellbar). Der Helfer lässt sich per „Einrichten“ anlegen; er steht danach auf an, außer die Tagesmittel zeigen eindeutig das Ende der Heizperiode. Feste Modi werden bei jeder Prüfung durchgesetzt, das Umschalten auf Sommer erfordert eine Bestätigung. Winterschutz: Steht die Freigabe in der Automatik länger als 6 Stunden auf aus, obwohl Heizperiode ermittelt ist, wird sie wieder eingeschaltet.
+- Neuer Reiter „Coach“: lokale Hinweise aus einer Wissensdatenbank mit 70 Regeln, Rückmeldung „Erledigt“ und „7 Tage ausblenden“, dazu die Empfehlungen der Integration.
+- KI-Analyse auf Knopfdruck über eine `ai_task`-Entität (Standard `ai_task.claude_ai_task`), mit Vorschau des übermittelten Lageberichts und Verlauf. Vorgeschlagene Maßnahmen werden nie automatisch ausgeführt.
+- Neue Optionen `heizperiode_entitaet`, `coach_ki_entitaet`, `coach_anwesenheit`, `wetter_entitaet`.
+- Neue SQLite-Datenbank `/data/coach.db` für Einstellungen, Rückmeldungen, KI-Analysen (höchstens 50) und ein Ereignisprotokoll (höchstens 2000 Einträge).
+
 ## 1.0.1 – 2026-09-25
 
 - Heizplan: Beim Speichern müssen alle sieben Tage übermittelt werden. Ein vollständig leerer Plan wird nur nach ausdrücklicher Bestätigung (Rückfrage in der Oberfläche) geschrieben.

@@ -32,6 +32,13 @@ OVERRIDE_DOMAINS: dict[str, tuple[str, ...]] = {
     "fenster": ("binary_sensor.",),
 }
 
+# Zulässige Domäne je Entitäts-Option (Freigabe: wie in der Integration pm_heizung erlaubt)
+ENTITY_OPTION_DOMAINS: dict[str, tuple[str, ...]] = {
+    "heizperiode_entitaet": ("input_boolean.", "binary_sensor.", "schedule."),
+    "coach_ki_entitaet": ("ai_task.",),
+    "wetter_entitaet": ("weather.",),
+}
+
 
 @dataclass
 class Options:
@@ -45,6 +52,10 @@ class Options:
     empfehlung: str = "sensor.pm_klima_empfehlung"
     aussentemperatur: str = "sensor.aussentemperatur"
     aussenfeuchte: str = "sensor.aussenluftfeuchte"
+    heizperiode_entitaet: str = "input_boolean.pm_heizperiode"
+    coach_ki_entitaet: str = "ai_task.claude_ai_task"
+    coach_anwesenheit: bool = True
+    wetter_entitaet: str = "weather.dwd_zuhause"
 
     @classmethod
     def load(cls, path: Path | None = None) -> Options:
@@ -76,6 +87,20 @@ class Options:
         if isinstance(notify, str):
             notify = [notify]
         opts.bericht_notify = [normalize_notify(n) for n in notify if isinstance(n, str) and n.strip()]
+        for key, domains in ENTITY_OPTION_DOMAINS.items():
+            val = raw.get(key)
+            if val is None or (isinstance(val, str) and not val.strip()):
+                continue
+            val = val.strip().lower() if isinstance(val, str) else val
+            if isinstance(val, str) and ENTITY_RE.match(val) and val.startswith(domains):
+                setattr(opts, key, val)
+            else:
+                _LOGGER.warning("Option %s: %r ist nicht zulässig, verwende %s", key, val, getattr(opts, key))
+        anw = raw.get("coach_anwesenheit")
+        if isinstance(anw, bool):
+            opts.coach_anwesenheit = anw
+        elif anw is not None:
+            _LOGGER.warning("Option coach_anwesenheit: %r ist kein Wahrheitswert, verwende true", anw)
         lvl = str(raw.get("log_level", "info")).lower()
         opts.log_level = lvl if lvl in ("debug", "info", "warning", "error") else "info"
         return opts

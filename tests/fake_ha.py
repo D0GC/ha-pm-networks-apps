@@ -8,7 +8,10 @@ Nachrichtenformate entsprechen HA 2026.9:
   schedule/list, schedule/update (helpers/collection.py, components/schedule/__init__.py),
   history/history_during_period (components/history/websocket_api.py, komprimiert s/a/lu),
   recorder/statistics_during_period (components/recorder/websocket_api.py, start in ms),
-  config/entity_registry/get.
+  config/entity_registry/get, input_boolean/create,
+  Dienste pm_heizung.* / climate.* mit Zustandsänderung, weather.get_forecasts und
+  ai_task.generate_data (nur mit Antwort: REST ``?return_response`` -> ``{"changed_states", "service_response"}``,
+  WS ``call_service`` mit ``return_response`` -> ``{"context", "response"}``).
 
 Start eigenständig:  python tests/fake_ha.py --port 8123
 """
@@ -18,9 +21,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import copy
+import json
 import math
 import random
-from datetime import UTC, datetime
+import re
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -198,10 +204,80 @@ class Simulation:
         return rows[-1][1], dict(rows[-1][2] or {})
 
 
+KI_ANTWORT = json.dumps(
+    {
+        "zusammenfassung": "Die Räume sind überwiegend im Zielbereich. Im Badezimmer ist die Feuchte zeitweise hoch.",
+        "tipps": [
+            {
+                "titel": "Bad nach dem Duschen lüften",
+                "text": "Lüften Sie das Badezimmer nach dem Duschen etwa 10 Minuten.",
+                "begruendung": "Die Feuchte lag mehrere Stunden über 70 %.",
+                "prioritaet": 1,
+                "raum": "badezimmer",
+                "massnahme": {"typ": "lueften"},
+            },
+            {
+                "titel": "Wohnzimmer abends etwas kühler",
+                "text": "Senken Sie die Abendtemperatur im Wohnzimmer um 0,5 °C.",
+                "begruendung": "Die Heizstunden sind hoch.",
+                "prioritaet": 3,
+                "raum": "wohnzimmer",
+                "massnahme": {"typ": "steuerung", "temperatur": 20.5, "dauer": 60},
+            },
+        ],
+    },
+    ensure_ascii=False,
+)
+
+
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
 class FakeHA:
     def __init__(self, now: datetime | None = None) -> None:
         self.schedules = default_schedules()
         self.sim = Simulation(self.schedules, now)
+        # Veränderlicher Zustand der climate.pm_*-Entitäten
+        self.climate: dict[str, dict[str, Any]] = {
+            slug: {
+                "state": "auto",
+                "overlay_bis": None,
+                "boost_bis": None,
+                "temperature": None,
+                "anzeige": "Zeitplan",
+                "grund": "zeitplan",
+            }
+            for slug in ROOMS
+        }
+        # Weitere Entitäten: entity_id -> (state, attributes)
+        self.extra: dict[str, tuple[str, dict[str, Any]]] = {
+            "switch.pm_heizung_aktiv": ("on", {"friendly_name": "PM Heizung aktiv"}),
+            "sensor.pm_heizung_abwesenheitsphase": (
+                "inaktiv",
+                {
+                    "gesperrt": False,
+                    "sperre_grund": None,
+                    "sperre_seit": None,
+                    "sperre_wirkung": "aus",
+                    "aktiv": False,
+                    "beschreibung": "Keine Sperre aktiv",
+                },
+            ),
+            "person.dominik": ("home", {"friendly_name": "Dominik"}),
+            "person.gina_perina": ("not_home", {"friendly_name": "Gina Perina"}),
+            "input_boolean.dominik_ist_zuhause": ("on", {}),
+            "input_boolean.gina_ist_zuhause": ("off", {}),
+            "weather.dwd_zuhause": ("cloudy", {"friendly_name": "DWD Zuhause", "temperature": 9.5}),
+            "ai_task.claude_ai_task": ("unknown", {"friendly_name": "Claude AI Task"}),
+        }
+        self.forecast: list[dict[str, Any]] | None = None
+        self.ki_antwort: Any = KI_ANTWORT
+        self.ki_delay = 0.0
+        self.ki_fehler = False
+        # Langzeitstatistik ersetzen: entity_id -> Funktion(ts) -> Wert|None
+        self.statistik: dict[str, Callable[[float], float | None]] = {}
+        self.statistik_fehlt: set[str] = set()
         self.updates: list[dict[str, Any]] = []
         self.service_calls: list[tuple[str, str, dict[str, Any]]] = []
         self.ws_commands: list[dict[str, Any]] = []
@@ -238,17 +314,26 @@ class FakeHA:
 
         for slug, cfg in ROOMS.items():
             _, attrs = self.sim.last(f"climate.pm_{slug}")
+            cl = self.climate[slug]
             attrs.update(
                 {
                     "hvac_modes": ["auto", "heat", "off"],
                     "preset_mode": "zeitplan",
-                    "anzeige": "Zeitplan",
-                    "grund": "zeitplan",
+                    "anzeige": cl["anzeige"],
+                    "grund": cl["grund"],
                     "min_temp": 5,
                     "max_temp": 25,
+                    "target_temp_step": 0.5,
+                    "zeitplan_temperatur": attrs.get("temperature"),
+                    "overlay_bis": cl["overlay_bis"],
+                    "boost_bis": cl["boost_bis"],
+                    "fenster_offen": False,
+                    "phase": "komfort",
                 }
             )
-            add(f"climate.pm_{slug}", "auto", attrs)
+            if cl["temperature"] is not None:
+                attrs["temperature"] = cl["temperature"]
+            add(f"climate.pm_{slug}", cl["state"], attrs)
             hum, _ = self.sim.last(cfg["feuchte"])
             add(
                 cfg["feuchte"],
@@ -301,9 +386,12 @@ class FakeHA:
                         "prioritaet": 20,
                         "text": "Badezimmer: Lüften empfohlen, etwa 10 Minuten",
                     },
-                ]
+                ],
+                "beratung_aktiv": True,
             },
         )
+        for eid, (state, attrs) in self.extra.items():
+            add(eid, state, dict(attrs))
         return out
 
     async def states(self, request: web.Request) -> web.Response:
@@ -323,8 +411,83 @@ class FakeHA:
         data = await request.json()
         if domain == "notify" and service in self.fail_notify:
             return web.json_response({"message": f"Service {domain}.{service} not found."}, status=400)
-        self.service_calls.append((domain, service, data))
+        status, body = await self._dienst(domain, service, data, "return_response" in request.query)
+        if status != 200:
+            return web.json_response({"message": body}, status=status)
+        if "return_response" in request.query:
+            return web.json_response({"changed_states": [], "service_response": body})
         return web.json_response([])
+
+    async def _dienst(self, domain: str, service: str, data: dict[str, Any], wants: bool) -> tuple[int, Any]:
+        """Dienstaufruf (REST und WS). Rückgabe ``(status, response | Fehlermeldung)``."""
+        self.service_calls.append((domain, service, data))
+        if domain in ("weather", "ai_task"):
+            if not wants:
+                return 400, "Service call requires responses but caller did not ask for responses"
+            if domain == "weather":
+                eid = data.get("entity_id")
+                if eid not in self.extra:
+                    return 400, f"Entity {eid} not found"
+                return 200, {eid: {"forecast": self._forecast()}}
+            if self.ki_delay:
+                await asyncio.sleep(self.ki_delay)
+            if self.ki_fehler:
+                return 500, self.ki_fehler if isinstance(self.ki_fehler, str) else "AI task failed"
+            return 200, {"conversation_id": "abc", "data": self.ki_antwort}
+        if wants:
+            return 400, "Service does not support responses. Remove return_response from request."
+        self._apply_service(domain, service, data)
+        return 200, None
+
+    def _forecast(self) -> list[dict[str, Any]]:
+        if self.forecast is not None:
+            return self.forecast
+        base = datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+        return [
+            {
+                "datetime": (base + timedelta(days=i)).astimezone(UTC).isoformat(),
+                "condition": "rainy" if i == 1 else "cloudy",
+                "temperature": 10.0 + i,
+                "templow": 2.0 + i,
+                "precipitation": 3.2 if i == 1 else 0.0,
+                "precipitation_probability": 80 if i == 1 else 10,
+            }
+            for i in range(6)
+        ]
+
+    def _apply_service(self, domain: str, service: str, data: dict[str, Any]) -> None:
+        """Wirkung der Dienste auf den Zustand (vereinfacht wie pm_heizung)."""
+        eid = data.get("entity_id")
+        if domain == "input_boolean" and service in ("turn_on", "turn_off") and eid in self.extra:
+            state, attrs = self.extra[eid]
+            if state == "unavailable":  # wie HA: Dienstaufruf ohne Wirkung
+                return
+            self.extra[eid] = ("on" if service == "turn_on" else "off", attrs)
+            return
+        if not isinstance(eid, str) or not eid.startswith("climate.pm_"):
+            return
+        cl = self.climate.get(eid[len("climate.pm_") :])
+        if cl is None:
+            return
+        now = datetime.now(UTC)
+        if domain == "climate" and service == "set_hvac_mode":
+            cl.update(state=data["hvac_mode"], overlay_bis=None, boost_bis=None, temperature=None)
+            cl.update(grund={"auto": "zeitplan", "heat": "manuell", "off": "aus"}[data["hvac_mode"]])
+        elif domain == "climate" and service == "set_temperature":
+            cl["temperature"] = data["temperature"]
+        elif domain == "pm_heizung" and service == "set_overlay":
+            if cl["state"] == "auto":
+                dauer = data.get("dauer", 120)
+                cl["overlay_bis"] = "dauerhaft" if dauer == 0 else (now + timedelta(minutes=dauer)).isoformat()
+                cl.update(temperature=data["temperatur"], grund="overlay", anzeige=f"Zeitweise {data['temperatur']} °C")
+            else:
+                if cl["state"] == "off":
+                    cl["state"] = "heat"
+                cl["temperature"] = data["temperatur"]
+        elif domain == "pm_heizung" and service == "boost":
+            cl.update(boost_bis=(now + timedelta(minutes=data["dauer"])).isoformat(), temperature=25, grund="boost")
+        elif domain == "pm_heizung" and service == "clear_overlay":
+            cl.update(overlay_bis=None, boost_bis=None, temperature=None, grund="zeitplan", anzeige="Zeitplan")
 
     async def modify(self, request: web.Request) -> web.Response:
         """Testhilfe: Fremdänderung simulieren."""
@@ -352,6 +515,9 @@ class FakeHA:
             if msg.get("type") == "test/slow":
                 asyncio.get_running_loop().create_task(self._slow_reply(ws, msg))
                 continue
+            if msg.get("type") == "call_service":
+                asyncio.get_running_loop().create_task(self._ws_call_service(ws, msg))
+                continue
             try:
                 result = self.handle(msg)
                 await ws.send_json({"id": msg["id"], "type": "result", "success": True, "result": result})
@@ -369,6 +535,22 @@ class FakeHA:
                     }
                 )
         return ws
+
+    async def _ws_call_service(self, ws: web.WebSocketResponse, msg: dict[str, Any]) -> None:
+        """WS ``call_service`` (websocket_api/commands.py): Ergebnis ``{"context", "response"}``."""
+        status, body = await self._dienst(
+            msg["domain"], msg["service"], dict(msg.get("service_data") or {}), bool(msg.get("return_response"))
+        )
+        if ws.closed:
+            return
+        if status != 200:
+            code = "service_validation_error" if status == 400 else "home_assistant_error"
+            await ws.send_json({"id": msg["id"], "type": "result", "success": False, "error": {"code": code, "message": body}})
+            return
+        result: dict[str, Any] = {"context": {"id": "01TEST", "parent_id": None, "user_id": None}}
+        if msg.get("return_response"):
+            result["response"] = body
+        await ws.send_json({"id": msg["id"], "type": "result", "success": True, "result": result})
 
     async def _slow_reply(self, ws: web.WebSocketResponse, msg: dict[str, Any]) -> None:
         await asyncio.sleep(msg.get("delay", 0.3))
@@ -388,6 +570,12 @@ class FakeHA:
             if eid.startswith("schedule."):
                 return {"entity_id": eid, "platform": "schedule", "unique_id": eid.split(".", 1)[1]}
             return {"entity_id": eid, "platform": "pm_heizung", "unique_id": eid}
+        if typ == "input_boolean/create":
+            item_id = _slugify(msg["name"])
+            if f"input_boolean.{item_id}" in self.extra:
+                item_id += "_2"
+            self.extra[f"input_boolean.{item_id}"] = ("off", {"friendly_name": msg["name"], "icon": msg.get("icon")})
+            return {"id": item_id, "name": msg["name"], "icon": msg.get("icon")}
         if typ == "history/history_during_period":
             return self._history(msg)
         if typ == "recorder/statistics_during_period":
@@ -463,6 +651,19 @@ class FakeHA:
         end = datetime.fromisoformat(msg["end_time"]).timestamp() if msg.get("end_time") else self.sim.now.timestamp()
         out = {}
         for eid in msg["statistic_ids"]:
+            if eid in self.statistik_fehlt:
+                continue
+            if eid in self.statistik:
+                fn = self.statistik[eid]
+                h = int(start // 3600 * 3600)
+                vals = []
+                while h < end:
+                    v = fn(h)
+                    if v is not None:
+                        vals.append({"start": h * 1000.0, "end": (h + 3600) * 1000.0, "mean": v, "min": v, "max": v})
+                    h += 3600
+                out[eid] = vals
+                continue
             rows = self.sim.series.get(eid)
             if not rows or eid.startswith(("climate.", "binary_sensor.")):
                 continue

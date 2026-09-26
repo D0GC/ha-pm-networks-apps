@@ -28,6 +28,22 @@ configuration:
   aussenfeuchte:
     name: Outdoor humidity
     description: Default sensor.aussenluftfeuchte.
+  heizperiode_entitaet:
+    name: Heating season switch
+    description: >-
+      Switch the app sets for heating season (on) and summer (off). It must be configured as release entity in the PM Klima integration. Default input_boolean.pm_heizperiode.
+  coach_ki_entitaet:
+    name: AI service for the climate coach
+    description: >-
+      ai_task entity used for on-demand AI analysis. Default ai_task.claude_ai_task.
+  coach_anwesenheit:
+    name: Presence in the situation report
+    description: >-
+      Include persons and presence in the report sent to the AI.
+  wetter_entitaet:
+    name: Weather forecast
+    description: >-
+      weather entity used for the forecast in the climate coach. Default weather.dwd_zuhause.
   log_level:
     name: Log level
     description: debug, info, warning or error.
