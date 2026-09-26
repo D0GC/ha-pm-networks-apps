@@ -52,8 +52,9 @@
     clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, err ? 6000 : 3200);
   }
 
-  function modal(title, bodyHtml, actions) {
+  function modal(title, bodyHtml, actions, opts) {
     const m = $("#modal");
+    m.querySelector(".modal-card").classList.toggle("wide", !!(opts && opts.wide));
     $("#modal-title").textContent = title;
     $("#modal-body").innerHTML = bodyHtml;
     const box = $("#modal-actions"); box.innerHTML = "";
@@ -73,12 +74,14 @@
   // ------------------------------------------------------------------ Navigation
   function route() {
     const parts = location.hash.replace(/^#\/?/, "").split("/");
-    const tab = ["uebersicht", "heizplan", "auswertung", "berichte"].includes(parts[0]) ? parts[0] : "uebersicht";
+    const tab = ["uebersicht", "steuerung", "heizplan", "auswertung", "coach", "berichte"].includes(parts[0]) ? parts[0] : "uebersicht";
     if (S.plan && S.tab === "heizplan" && tab !== "heizplan" && isDirty()) {
       if (!confirm("Ungespeicherte Änderungen am Heizplan verwerfen?")) { location.hash = "#/heizplan/" + S.plan.raum; return; }
       S.plan = null;
     }
+    if (S.tab !== tab && EXT[S.tab] && EXT[S.tab].leave) EXT[S.tab].leave();
     S.tab = tab;
+    S.parts = parts;
     $("#toast").hidden = true;
     if (parts[1] && S.info && S.info.raeume.some(r => r.raum === parts[1])) S.raum = parts[1];
     document.querySelectorAll("#tabs a").forEach(a => a.classList.toggle("active", a.dataset.tab === tab));
@@ -114,6 +117,7 @@
       if (S.tab === "uebersicht") await renderOverview(main);
       else if (S.tab === "heizplan") await renderPlan(main);
       else if (S.tab === "auswertung") await renderAnalysis(main);
+      else if (EXT[S.tab]) await EXT[S.tab].render(main, S.parts || []);
       else await renderReports(main);
     } catch (e) {
       main.innerHTML = `<div class="errbox">${esc(e.message)}</div>`;
@@ -666,6 +670,11 @@
       <p class="muted">${esc(r.schluss)}</p>
       ${(r.push || []).length ? `<p class="small muted">Push: ${r.push.map(p => `${esc(p.dienst)} ${p.ok ? "gesendet" : "fehlgeschlagen"}`).join(", ")}</p>` : ""}`;
   }
+
+  // ------------------------------------------------------------------ Erweiterungen (steuerung.js, coach.js)
+  // Zusätzliche Reiter registrieren sich in window.KSTabs = {name: {render(main, parts), leave()}}.
+  const EXT = window.KSTabs = window.KSTabs || {};
+  window.KSApp = { S, $, esc, num, fmtDate, tz, api, toast, modal, rooms, roomName, prefill: null };
 
   // ------------------------------------------------------------------ Start
   async function boot() {
