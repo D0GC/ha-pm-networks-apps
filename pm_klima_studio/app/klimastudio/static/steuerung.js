@@ -27,12 +27,16 @@
     hpOffen: false, // Einstellungen aufgeklappt
     hpEntwurf: null,
     busy: false,
+    view: null,     // Container dieses Reiters (von app.js je render()-Lauf neu erzeugt)
   };
 
   const A = () => window.KSApp;
   const esc = s => A().esc(s);
   const num = (v, d) => A().num(v, d);
   const aktiv = () => A().S.tab === "steuerung";
+  // Nur der sichtbare Container des jüngsten Laufs darf beschrieben werden.
+  const aktuell = view => aktiv() && st.view === view && view.isConnected;
+  const $v = sel => st.view.querySelector(sel);
 
   // Rückgabe ist HTML-sicher (landet in innerHTML).
   function fmtZeit(iso) {
@@ -51,11 +55,12 @@
   function stopTimer() { clearTimeout(st.timer); st.timer = null; }
   function planTimer() {
     stopTimer();
+    const view = st.view;
     st.timer = setTimeout(async () => {
-      if (!aktiv()) return;
+      if (!aktuell(view)) return;
       if (st.busy || !document.getElementById("modal").hidden) { planTimer(); return; }
-      try { await laden(); zeichnen(); } catch (e) { /* stiller Fehler, nächster Versuch folgt */ }
-      if (aktiv()) planTimer();
+      try { await laden(); if (aktuell(view)) zeichnen(); } catch (e) { /* stiller Fehler, nächster Versuch folgt */ }
+      if (aktuell(view)) planTimer();
     }, REFRESH_MS);
   }
 
@@ -67,16 +72,17 @@
 
   async function render(main, parts) {
     stopTimer();
-    if (!st.data) main.innerHTML = `<div class="bar"><h2 class="grow">Steuerung</h2></div><div class="loading">Zustand wird geladen …</div>`;
+    st.view = main;
+    if (!st.data || !main.hasChildNodes()) main.innerHTML = `<div class="bar"><h2 class="grow">Steuerung</h2></div><div class="loading">Zustand wird geladen …</div>`;
     await laden();
-    if (!aktiv()) return;
+    if (!aktuell(main)) return;
     const pf = A().prefill;
     A().prefill = null;
     const ziel = (pf && pf.raum) || parts[1] || null;
     if (pf && pf.raum && st.data.raeume[pf.raum]) uebernehmeVorgabe(pf);
     zeichnen();
     if (ziel && st.data.raeume[ziel]) {
-      const card = document.querySelector(`.ctl-card[data-raum="${CSS.escape(ziel)}"]`);
+      const card = cardEl(ziel);
       if (card) {
         card.classList.add("focus");
         card.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -141,7 +147,7 @@
 
   // ------------------------------------------------------------------ Zeichnen
   function zeichnen() {
-    const main = document.getElementById("main");
+    const main = st.view;
     const d = st.data;
     const integ = d.integration || {};
     const raeume = Object.entries(d.raeume || {});
@@ -155,9 +161,10 @@
       <div class="ctl-grid">${raeume.map(([slug, r]) => `<article class="card glass ctl-card" data-raum="${esc(slug)}">${cardHtml(slug, r)}</article>`).join("")
         || '<div class="empty">Keine Räume erkannt.</div>'}</div>
       <p class="small muted">Alle Befehle laufen über die Integration PM Klima. Klima Studio schaltet die Thermostate nicht selbst.</p>`;
-    document.getElementById("ctl-reload").addEventListener("click", async ev => {
-      ev.currentTarget.disabled = true;
-      try { await laden(); if (aktiv()) { zeichnen(); planTimer(); } } catch (e) { A().toast(e.message, true); ev.currentTarget.disabled = false; }
+    main.querySelector("#ctl-reload").addEventListener("click", async ev => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try { await laden(); if (aktuell(main)) { zeichnen(); planTimer(); } } catch (e) { if (aktuell(main)) { A().toast(e.message, true); btn.disabled = false; } }
     });
     bindHp();
     for (const [slug] of raeume) bindCard(slug);
@@ -271,7 +278,7 @@
   }
 
   function bindHp() {
-    const card = document.getElementById("hp-card");
+    const card = $v("#hp-card");
     const hp = st.data.heizperiode;
     if (!hp) return;
     card.querySelectorAll("#hp-modus button").forEach(b => b.addEventListener("click", async () => {
@@ -284,19 +291,20 @@
       }
       hpSenden({ modus: b.dataset.v }, "Modus der Heizperiode geändert.");
     }));
-    const det = document.getElementById("hp-set");
+    const det = $v("#hp-set");
     det.addEventListener("toggle", () => { st.hpOffen = det.open; });
     for (const k of Object.keys(HP_GRENZEN)) {
-      document.getElementById("hp-" + k).addEventListener("input", () => {
+      const inp = $v("#hp-" + k);
+      inp.addEventListener("input", () => {
         st.hpEntwurf = st.hpEntwurf || Object.assign({}, hp);
-        st.hpEntwurf[k] = document.getElementById("hp-" + k).value;
+        st.hpEntwurf[k] = inp.value;
       });
     }
-    document.getElementById("hp-reset").addEventListener("click", () => { st.hpEntwurf = null; zeichneHp(); });
-    document.getElementById("hp-save").addEventListener("click", () => {
+    $v("#hp-reset").addEventListener("click", () => { st.hpEntwurf = null; zeichneHp(); });
+    $v("#hp-save").addEventListener("click", () => {
       const body = {};
       for (const [k, g] of Object.entries(HP_GRENZEN)) {
-        const raw = String(document.getElementById("hp-" + k).value).replace(",", ".").trim();
+        const raw = String($v("#hp-" + k).value).replace(",", ".").trim();
         const v = Number(raw);
         if (raw === "" || isNaN(v) || v < g.min || v > g.max || Math.abs(v / g.step - Math.round(v / g.step)) > 1e-9) {
           A().toast(`${g.label}: bitte einen Wert von ${num(g.min)} bis ${num(g.max)} in Schritten von ${num(g.step)} angeben.`, true);
@@ -306,12 +314,13 @@
       }
       hpSenden(body, "Einstellungen gespeichert.", true);
     });
-    const ein = document.getElementById("hp-einrichten");
+    const ein = $v("#hp-einrichten");
     if (ein) ein.addEventListener("click", einrichten);
   }
 
   function zeichneHp() {
-    const card = document.getElementById("hp-card");
+    const card = $v("#hp-card");
+    if (!card) return; // neuer Lauf lädt noch
     card.classList.remove("busy");
     card.innerHTML = hpHtml(st.data.heizperiode, Object.entries(st.data.raeume || {}));
     bindHp();
@@ -320,7 +329,7 @@
   function sperre(el, an) { el.querySelectorAll("button, input").forEach(b => { b.disabled = an; }); el.classList.toggle("busy", an); }
 
   async function hpSenden(body, meldung, entwurfVerwerfen) {
-    const card = document.getElementById("hp-card");
+    const card = $v("#hp-card");
     st.busy = true; sperre(card, true);
     try {
       const { data } = await A().api("heizperiode", { method: "POST", body });
@@ -336,7 +345,7 @@
   }
 
   async function einrichten() {
-    const card = document.getElementById("hp-card");
+    const card = $v("#hp-card");
     st.busy = true; sperre(card, true);
     try {
       const { data } = await A().api("heizperiode/einrichten", { method: "POST", body: {} });
@@ -410,7 +419,7 @@
     return `<div class="stepper"><button type="button" data-step="-1" data-s="${id}" aria-label="0,5 Grad weniger">−</button><span class="v">${grad(wert)}</span><button type="button" data-step="1" data-s="${id}" aria-label="0,5 Grad mehr">+</button></div>`;
   }
 
-  function cardEl(slug) { return document.querySelector(`.ctl-card[data-raum="${CSS.escape(slug)}"]`); }
+  function cardEl(slug) { return st.view.querySelector(`.ctl-card[data-raum="${CSS.escape(slug)}"]`); }
 
   function bindCard(slug) {
     const card = cardEl(slug);

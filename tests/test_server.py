@@ -6,6 +6,7 @@ import ipaddress
 
 import pytest
 
+from klimastudio import __version__
 from klimastudio import schedule as sch
 from klimastudio.server import allowed_networks, create_app, ingress_base
 
@@ -119,6 +120,56 @@ async def test_static_assets_have_no_external_hosts(app_client):
         assert resp.status == 200
         assert "https://" not in body, path
         assert "http://" not in body.replace("http://www.w3.org/2000/svg", ""), path
+
+
+async def test_index_references_versioned_assets(app_client):
+    html = await (await app_client.get("/")).text()
+    for name in ("app.css", "charts.js", "app.js", "steuerung.js", "coach.js"):
+        assert f'"static/{__version__}/{name}"' in html, name
+    assert "?v=" not in html
+
+
+@pytest.mark.parametrize("version", [__version__, "1.0.1"])
+@pytest.mark.parametrize("name", ["app.js", "steuerung.js", "coach.js", "charts.js", "app.css"])
+async def test_versioned_assets_no_cache(app_client, version, name):
+    resp = await app_client.get(f"/static/{version}/{name}")
+    assert resp.status == 200
+    assert resp.headers["Cache-Control"] == "no-cache"
+    assert "default-src 'self'" in resp.headers["Content-Security-Policy"]
+    # Versionsfremde Pfade liefern die aktuelle Datei
+    assert await resp.read() == await (await app_client.get(f"/static/{name}")).read()
+
+
+async def test_versioned_fonts_and_legacy_paths(app_client):
+    css = await (await app_client.get(f"/static/{__version__}/app.css")).text()
+    assert 'url("fonts/' in css  # relativ zum versionierten Pfad
+    resp = await app_client.get(f"/static/{__version__}/fonts/Montserrat-Regular.woff2")
+    assert resp.status == 200
+    legacy = await app_client.get("/static/app.js")
+    assert legacy.status == 200
+    assert legacy.headers["Cache-Control"] == "no-cache"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"/static/{__version__}/..%2f..%2fserver.py",
+        f"/static/{__version__}/..%2f__init__.py",
+        f"/static/{__version__}/%2e%2e/%2e%2e/server.py",
+        f"/static/{__version__}/..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd",
+        f"/static/{__version__}/%2fetc%2fpasswd",
+        f"/static/{__version__}/img",
+        f"/static/{__version__}/gibt_es_nicht.js",
+    ],
+)
+async def test_versioned_path_no_traversal(app_client, path):
+    from yarl import URL
+
+    resp = await app_client.get(URL(path, encoded=True))
+    assert resp.status in (403, 404), path
+    body = await resp.text()
+    assert "__version__" not in body
+    assert "root:" not in body
 
 
 # ------------------------------------------------------------------ API

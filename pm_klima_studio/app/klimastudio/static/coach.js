@@ -12,19 +12,23 @@
     ergebnis: null,   // angezeigter KI-Lauf
     ergebnisFehler: null,
     hinweis: null,    // z. B. „Analyse läuft bereits“ (409 laeuft)
+    view: null,       // Container dieses Reiters (von app.js je render()-Lauf neu erzeugt)
   };
 
   const A = () => window.KSApp;
   const esc = s => A().esc(s);
   const aktiv = () => A().S.tab === "coach";
+  // Elemente nur im Container des jüngsten Laufs suchen (ein abgehängter Container liefert nichts Sichtbares).
+  const $v = sel => st.view ? st.view.querySelector(sel) : null;
   const fmtIso = iso => { const t = Date.parse(iso); return isNaN(t) ? esc(iso || "–") : esc(A().fmtDate(t)); };
   const raumName = slug => slug ? A().roomName(slug) : null;
   const kiEntitaet = () => { const i = A().S.info; return (i && i.coach && i.coach.ki_entitaet) || null; };
 
   async function render(main) {
-    if (!st.data) main.innerHTML = `<div class="bar"><h2 class="grow">Klima-Coach</h2></div><div class="loading">Hinweise werden ermittelt …</div>`;
+    st.view = main;
+    if (!st.data || !main.hasChildNodes()) main.innerHTML = `<div class="bar"><h2 class="grow">Klima-Coach</h2></div><div class="loading">Hinweise werden ermittelt …</div>`;
     const [c, v] = await Promise.all([A().api("coach"), A().api("coach/ki").catch(() => ({ data: [] }))]);
-    if (!aktiv()) return;
+    if (!aktiv() || st.view !== main || !main.isConnected) return;
     st.data = c.data;
     st.verlauf = Array.isArray(v.data) ? v.data : [];
     zeichnen(main);
@@ -55,13 +59,14 @@
         <div id="ki-ergebnis"></div>
         <div id="ki-verlauf"></div>
       </section>`;
-    document.getElementById("co-reload").addEventListener("click", async ev => {
-      ev.currentTarget.disabled = true;
-      try { await render(main); } catch (e) { A().toast(e.message, true); ev.currentTarget.disabled = false; }
+    main.querySelector("#co-reload").addEventListener("click", async ev => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try { await render(main); } catch (e) { if (main.isConnected) { A().toast(e.message, true); btn.disabled = false; } }
     });
-    bindTipps(document.getElementById("co-tipps"), tipps);
-    document.getElementById("ki-was").addEventListener("click", lagebericht);
-    document.getElementById("ki-start").addEventListener("click", analyse);
+    bindTipps(main.querySelector("#co-tipps"), tipps);
+    main.querySelector("#ki-was").addEventListener("click", lagebericht);
+    main.querySelector("#ki-start").addEventListener("click", analyse);
     zeichneKi();
   }
 
@@ -133,7 +138,7 @@
       await A().api("coach/rueckmeldung", { method: "POST", body });
       st.data.tipps = (st.data.tipps || []).filter(x => x.id !== t.id);
       el.remove();
-      const box = document.getElementById("co-tipps");
+      const box = $v("#co-tipps");
       if (box && !box.querySelector(".tip")) box.innerHTML = '<div class="empty glass card">Derzeit liegen keine Hinweise vor.</div>';
       A().toast(aktion === "ausblenden" ? "Der Hinweis wird 7 Tage lang ausgeblendet." : "Als erledigt vermerkt.");
     } catch (e) {
@@ -186,9 +191,9 @@
   }
 
   function zeichneKi() {
-    const z = document.getElementById("ki-zustand");
+    const z = $v("#ki-zustand");
     if (!z) return;
-    const btn = document.getElementById("ki-start");
+    const btn = $v("#ki-start");
     btn.disabled = !!st.lauf;
     btn.textContent = st.lauf ? "Analyse läuft …" : "Analyse anfordern";
     z.innerHTML = st.lauf ? `<div class="infobox small"><span class="spinner" aria-hidden="true"></span>Die Auswertung kann bis zu drei Minuten dauern. Sie können den Reiter währenddessen verlassen.</div>`
@@ -199,7 +204,7 @@
   }
 
   function zeichneErgebnis() {
-    const box = document.getElementById("ki-ergebnis");
+    const box = $v("#ki-ergebnis");
     const r = st.ergebnis;
     if (!box) return;
     if (!r) { box.innerHTML = ""; return; }
@@ -212,11 +217,11 @@
         ${r.roh && !tipps.length ? `<p class="small muted m0">Antwort des KI-Dienstes im Rohformat:</p><pre class="json">${esc(typeof r.roh === "string" ? r.roh : JSON.stringify(r.roh, null, 2))}</pre>` : ""}
       </div>
       ${tipps.length ? `<div class="tip-list" id="ki-tipps">${tipps.map(t => tippHtml(Object.assign({}, t, { raum_name: raumName(t.raum) }), false)).join("")}</div>` : ""}`;
-    bindTipps(document.getElementById("ki-tipps"), tipps);
+    bindTipps($v("#ki-tipps"), tipps);
   }
 
   function zeichneVerlauf() {
-    const box = document.getElementById("ki-verlauf");
+    const box = $v("#ki-verlauf");
     if (!box) return;
     const v = st.verlauf || [];
     if (!v.length) { box.innerHTML = ""; return; }
@@ -230,7 +235,7 @@
         st.ergebnis = data; st.ergebnisFehler = null; st.hinweis = null;
         if (!aktiv()) return;
         zeichneKi();
-        const e = document.getElementById("ki-ergebnis");
+        const e = $v("#ki-ergebnis");
         if (e) e.scrollIntoView({ block: "start", behavior: "smooth" });
       } catch (e) { A().toast(e.message, true); }
     }));
