@@ -6,7 +6,7 @@ App-Repository (ehemals „Add-ons“) für Home Assistant OS und Supervised.
 
 | App | Beschreibung |
 | --- | --- |
-| [PM Klima Studio](pm_klima_studio/) | Heizplan-Editor, Klima-Auswertungen und Wochenbericht für die Integration PM Klima. |
+| [PM Klima Studio](pm_klima_studio/) | Heizplan-Editor, Steuerung, Klima-Auswertungen, Klima-Coach und Wochenbericht für die Integration PM Klima. |
 
 ## Installation
 
