@@ -14,6 +14,8 @@
     info: null, tab: "uebersicht", raum: null, bereich: "24h",
     plan: null, // {raum, id, name, revision, tage, orig}
     sel: null,  // {day, idx} oder {neu:true, day, start, end, temp}
+    gen: 0,     // Render-Generation: nur der jüngste render()-Lauf darf schreiben
+    view: null, // Container des aktuellen Reiters in #main
   };
 
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -74,7 +76,9 @@
   // ------------------------------------------------------------------ Navigation
   function route() {
     const parts = location.hash.replace(/^#\/?/, "").split("/");
-    const tab = ["uebersicht", "steuerung", "heizplan", "auswertung", "coach", "berichte"].includes(parts[0]) ? parts[0] : "uebersicht";
+    // Gültige Reiter ergeben sich aus der Navigation in index.html (keine zweite, feste Liste)
+    const tabs = [...document.querySelectorAll("#tabs a[data-tab]")].map(a => a.dataset.tab);
+    const tab = tabs.includes(parts[0]) ? parts[0] : "uebersicht";
     if (S.plan && S.tab === "heizplan" && tab !== "heizplan" && isDirty()) {
       if (!confirm("Ungespeicherte Änderungen am Heizplan verwerfen?")) { location.hash = "#/heizplan/" + S.plan.raum; return; }
       S.plan = null;
@@ -97,29 +101,41 @@
     return `<div class="chips" id="roomchips">${list.map(r =>
       `<button class="chip ${r.raum === S.raum ? "active" : ""}" data-raum="${esc(r.raum)}">${esc(r.name)}</button>`).join("")}</div>`;
   }
-  function bindRoomChips(onChange) {
-    document.querySelectorAll("#roomchips .chip").forEach(b => b.addEventListener("click", () => {
+  function bindRoomChips(main, onChange) {
+    main.querySelectorAll("#roomchips .chip").forEach(b => b.addEventListener("click", () => {
       if (S.tab === "heizplan" && isDirty() && !confirm("Ungespeicherte Änderungen verwerfen?")) return;
-      S.raum = b.dataset.raum; location.hash = `#/${S.tab}/${S.raum}`; onChange && onChange();
+      S.raum = b.dataset.raum;
+      // Ändert sich der Hash, rendert route(); ein zusätzlicher Lauf würde nur verworfen.
+      const ziel = `#/${S.tab}/${S.raum}`;
+      if (location.hash !== ziel) location.hash = ziel; else if (onChange) onChange();
     }));
   }
   function rangeChips() {
     return `<div class="chips" id="rangechips">${Object.keys(RANGE_LABEL).map(k =>
       `<button class="chip ${k === S.bereich ? "active" : ""}" data-b="${k}">${RANGE_LABEL[k]}</button>`).join("")}</div>`;
   }
-  function bindRangeChips() {
-    document.querySelectorAll("#rangechips .chip").forEach(b => b.addEventListener("click", () => { S.bereich = b.dataset.b; render(); }));
+  function bindRangeChips(main) {
+    main.querySelectorAll("#rangechips .chip").forEach(b => b.addEventListener("click", () => { S.bereich = b.dataset.b; render(); }));
   }
 
+  // Jeder Lauf schreibt in einen eigenen, frischen Container. Ein veralteter Lauf (Reiter inzwischen
+  // gewechselt) schreibt nur noch in einen abgehängten Knoten und bricht nach jedem await ab.
+  const stale = view => !view.isConnected;
   async function render() {
-    const main = $("#main");
+    const gen = ++S.gen;
+    const main = document.createElement("div");
+    main.className = "view";
+    S.view = main;
+    $("#main").replaceChildren(main);
     try {
       if (S.tab === "uebersicht") await renderOverview(main);
       else if (S.tab === "heizplan") await renderPlan(main);
       else if (S.tab === "auswertung") await renderAnalysis(main);
+      else if (S.tab === "berichte") await renderReports(main);
       else if (EXT[S.tab]) await EXT[S.tab].render(main, S.parts || []);
-      else await renderReports(main);
+      else main.innerHTML = `<div class="errbox">Die Oberfläche ist veraltet. Bitte die Seite neu laden.</div>`;
     } catch (e) {
+      if (gen !== S.gen || stale(main)) return;
       main.innerHTML = `<div class="errbox">${esc(e.message)}</div>`;
     }
   }
@@ -144,8 +160,9 @@
 
   async function renderOverview(main) {
     main.innerHTML = `<div class="bar"><h2 class="grow">Übersicht</h2>${rangeChips()}</div><div class="loading">Auswertung läuft …</div>`;
-    bindRangeChips();
+    bindRangeChips(main);
     const [cur, ov] = await Promise.all([api("aktuell"), api("uebersicht?bereich=" + S.bereich)]);
+    if (stale(main)) return;
     const c = cur.data, o = ov.data;
     const recos = (c.empfehlungen || []).map(e => `<li>${esc(e.text)}</li>`).join("") ||
       `<li class="muted">Derzeit liegen keine Empfehlungen vor.</li>`;
@@ -175,7 +192,7 @@
         </section>
       </div>
       <div class="grid-tiles">${tiles || '<div class="empty">Keine Räume erkannt.</div>'}</div>`;
-    bindRangeChips();
+    bindRangeChips(main);
   }
 
   // ------------------------------------------------------------------ Heizplan
@@ -196,20 +213,23 @@
     return `linear-gradient(180deg,rgb(${c2}),rgb(${c}))`;
   }
 
-  async function loadPlan(force) {
-    if (!force && S.plan && S.plan.raum === S.raum) return;
+  // false: der Lauf ist veraltet (Container abgehängt), S.plan bleibt unverändert.
+  async function loadPlan(force, main) {
+    if (!force && S.plan && S.plan.raum === S.raum) return true;
     const res = await api("heizplan/" + encodeURIComponent(S.raum));
+    if (stale(main)) return false;
     const d = res.data;
     S.plan = { raum: S.raum, id: d.id, name: d.name, entity: d.entity_id, revision: d.revision, tage: clone(d.tage), orig: clone(d.tage) };
     S.sel = null;
+    return true;
   }
 
   async function renderPlan(main) {
     const withPlan = r => !!r.schedule;
     main.innerHTML = `<div class="bar">${roomChips(withPlan)}</div><div class="loading">Heizplan wird geladen …</div>`;
-    bindRoomChips(() => render());
+    bindRoomChips(main, () => render());
     if (!S.raum) { main.innerHTML = '<div class="empty">Kein Raum mit Heizplan gefunden.</div>'; return; }
-    await loadPlan(false);
+    if (!(await loadPlan(false, main))) return;
     drawPlan(main);
   }
 
@@ -233,34 +253,35 @@
         </section>
         <aside class="side glass ${S.sel ? "" : "empty"}" id="side"></aside>
       </div>`;
-    bindRoomChips(() => render());
-    $("#btn-reload").addEventListener("click", async () => {
+    bindRoomChips(main, () => render());
+    $("#btn-reload", main).addEventListener("click", async () => {
       if (isDirty() && !confirm("Änderungen verwerfen und neu laden?")) return;
-      await loadPlan(true); drawPlan(main); toast("Heizplan neu geladen.");
+      if (!(await loadPlan(true, main))) return;
+      drawPlan(main); toast("Heizplan neu geladen.");
     });
-    $("#btn-discard").addEventListener("click", () => { p.tage = clone(p.orig); S.sel = null; drawPlan(main); });
-    $("#btn-save").addEventListener("click", () => save(main));
-    document.querySelectorAll(".dayhead").forEach(h => h.addEventListener("click", () => dayMenu(h.dataset.day, main)));
-    for (const d of DAYS) drawDay(d);
-    drawNow();
+    $("#btn-discard", main).addEventListener("click", () => { p.tage = clone(p.orig); S.sel = null; drawPlan(main); });
+    $("#btn-save", main).addEventListener("click", () => save(main));
+    main.querySelectorAll(".dayhead").forEach(h => h.addEventListener("click", () => dayMenu(h.dataset.day, main)));
+    for (const d of DAYS) drawDay(d, main);
+    drawNow(main);
     drawSide(main);
-    for (const col of document.querySelectorAll(".daycol")) bindColumn(col, main);
+    for (const col of main.querySelectorAll(".daycol")) bindColumn(col, main);
   }
 
-  function drawNow() {
+  function drawNow(main) {
     const now = new Date();
     const parts = new Intl.DateTimeFormat("en-GB", { weekday: "long", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz() }).formatToParts(now);
     const wd = parts.find(x => x.type === "weekday").value.toLowerCase();
     const mins = (parseInt(parts.find(x => x.type === "hour").value, 10) % 24) * 60 + parseInt(parts.find(x => x.type === "minute").value, 10);
-    const col = document.querySelector(`.daycol[data-day="${wd}"]`);
+    const col = main.querySelector(`.daycol[data-day="${wd}"]`);
     if (!col) return;
     const line = document.createElement("div");
     line.className = "nowline"; line.style.top = (mins / DAY_MIN * 100) + "%";
     col.appendChild(line);
   }
 
-  function drawDay(day) {
-    const col = document.querySelector(`.daycol[data-day="${day}"]`);
+  function drawDay(day, main) {
+    const col = main.querySelector(`.daycol[data-day="${day}"]`);
     col.querySelectorAll(".block").forEach(b => b.remove());
     const blocks = S.plan.tage[day] || [];
     blocks.sort((a, b) => a.start - b.start);
@@ -283,8 +304,8 @@
     div.style.height = `calc(${((b.end - b.start) / DAY_MIN * 100)}% - 1px)`;
   }
 
-  function colFromX(x) {
-    for (const col of document.querySelectorAll(".daycol")) {
+  function colFromX(root, x) {
+    for (const col of root.querySelectorAll(".daycol")) {
       const r = col.getBoundingClientRect();
       if (x >= r.left - 2 && x <= r.right + 2) return col;
     }
@@ -316,7 +337,7 @@
     function onMove(e) {
       if (!moved && Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) < 5) return;
       moved = true;
-      const col = mode === "move" ? (colFromX(e.clientX) || col0) : col0;
+      const col = mode === "move" ? (colFromX(col0.parentElement, e.clientX) || col0) : col0;
       const dm = snap(minuteAt(col0, e.clientY) - m0);
       if (mode === "move") {
         const len = orig.end - orig.start;
@@ -422,10 +443,10 @@
     S.sel = { day, idx: S.plan.tage[day].indexOf(blk) };
     redraw();
   }
-  function redraw() { drawPlan($("#main")); }
+  function redraw() { drawPlan(S.view); }
 
   function drawSide(main) {
-    const side = $("#side");
+    const side = $("#side", main);
     const legend = `<div class="legend"><span>15 °C</span><span class="scale" style="background:linear-gradient(90deg,#B885D6,#E8875A)"></span><span>23 °C</span></div>`;
     const help = `<div class="help"><b>Maus:</b> auf freier Fläche ziehen legt einen Block an. <b>Touch:</b> freie Fläche antippen. Blöcke lassen sich verschieben, an den Kanten verlängern und antippen zum Bearbeiten. <b>Tagesname</b> öffnet Kopieren und Leeren.</div>`;
     if (!S.sel) {
@@ -448,10 +469,10 @@
         ${isNew ? `<button class="btn ghost" id="b-cancel">Abbrechen</button><button class="btn primary" id="b-add">Anlegen</button>`
                 : `<button class="btn danger" id="b-del">Löschen</button><button class="btn ghost" id="b-close">Fertig</button>`}
       </div></div>${legend}`;
-    const from = $("#f-from"), to = $("#f-to");
+    const from = $("#f-from", side), to = $("#f-to", side);
     const apply = () => {
       const s = parseHm(from.value), e = parseHm(to.value);
-      const errBox = $("#f-err");
+      const errBox = $("#f-err", side);
       if (isNaN(s) || isNaN(e)) { errBox.innerHTML = '<div class="errbox small">Uhrzeit bitte als hh:mm angeben (00:00 bis 24:00).</div>'; return false; }
       if (s >= e) { errBox.innerHTML = '<div class="errbox small">Beginn muss vor dem Ende liegen.</div>'; return false; }
       if (!fits(S.sel.day, s, e, isNew ? -1 : S.sel.idx)) { errBox.innerHTML = '<div class="errbox small">Überlappt einen anderen Block.</div>'; return false; }
@@ -460,29 +481,29 @@
       if (b.end !== e) delete b.end_s;
       b.start = s; b.end = e;
       from.value = hm(s); to.value = hm(e);
-      if (!isNew) { drawDay(S.sel.day); refreshBar(); }
+      if (!isNew) { drawDay(S.sel.day, main); refreshBar(main); }
       return true;
     };
     from.addEventListener("change", apply); to.addEventListener("change", apply);
     const step = d => {
       const t = Math.min(T_MAX, Math.max(T_MIN, Math.round(((b.temp ?? 20) + d) * 2) / 2));
-      b.temp = t; $("#t-val").textContent = num(t) + " °C";
-      if (!isNew) { drawDay(S.sel.day); refreshBar(); }
+      b.temp = t; $("#t-val", side).textContent = num(t) + " °C";
+      if (!isNew) { drawDay(S.sel.day, main); refreshBar(main); }
     };
-    $("#t-minus").addEventListener("click", () => step(-0.5));
-    $("#t-plus").addEventListener("click", () => step(0.5));
+    $("#t-minus", side).addEventListener("click", () => step(-0.5));
+    $("#t-plus", side).addEventListener("click", () => step(0.5));
     if (isNew) {
-      $("#b-cancel").addEventListener("click", () => { S.sel = null; redraw(); });
-      $("#b-add").addEventListener("click", () => { if (apply()) addBlock(S.sel.day, b.start, b.end, b.temp ?? 20); });
+      $("#b-cancel", side).addEventListener("click", () => { S.sel = null; redraw(); });
+      $("#b-add", side).addEventListener("click", () => { if (apply()) addBlock(S.sel.day, b.start, b.end, b.temp ?? 20); });
     } else {
-      $("#b-del").addEventListener("click", () => { S.plan.tage[S.sel.day].splice(S.sel.idx, 1); S.sel = null; redraw(); });
-      $("#b-close").addEventListener("click", () => { S.sel = null; redraw(); });
+      $("#b-del", side).addEventListener("click", () => { S.plan.tage[S.sel.day].splice(S.sel.idx, 1); S.sel = null; redraw(); });
+      $("#b-close", side).addEventListener("click", () => { S.sel = null; redraw(); });
     }
   }
 
-  function refreshBar() {
+  function refreshBar(main) {
     const dirty = isDirty();
-    $("#btn-save").disabled = !dirty; $("#btn-discard").disabled = !dirty;
+    $("#btn-save", main).disabled = !dirty; $("#btn-discard", main).disabled = !dirty;
   }
 
   async function dayMenu(day, main) {
@@ -552,7 +573,7 @@
     if (res.status === 409) {
       const again = await modal("Fremdänderung erkannt", `<div class="warnbox">${esc(res.data.fehler)}</div>${diffHtml(res.data.diff)}`,
         [{ label: "Neu laden", value: "reload", cls: "ghost" }, { label: "Überschreiben", value: "force", cls: "danger" }]);
-      if (again === "reload") { await loadPlan(true); drawPlan(main); return; }
+      if (again === "reload") { if (await loadPlan(true, main)) drawPlan(main); return; }
       const r2 = await api(`heizplan/${encodeURIComponent(p.raum)}`, { method: "POST", body: Object.assign({ tage, revision: res.data.revision_aktuell }, extra) });
       afterSave(r2.data, main); return;
     }
@@ -567,10 +588,10 @@
   // ------------------------------------------------------------------ Auswertung
   async function renderAnalysis(main) {
     main.innerHTML = `<div class="bar">${roomChips()}<span class="grow"></span>${rangeChips()}</div><div class="loading">Auswertung läuft …</div>`;
-    bindRoomChips(() => render()); bindRangeChips();
+    bindRoomChips(main, () => render()); bindRangeChips(main);
     if (!S.raum) { main.innerHTML = '<div class="empty">Keine Räume erkannt.</div>'; return; }
     const { data: a } = await api(`auswertung/${encodeURIComponent(S.raum)}?bereich=${S.bereich}`);
-    if (a.raum !== S.raum) return;
+    if (stale(main) || a.raum !== S.raum) return;
     const start = a.zeitraum.start, end = a.zeitraum.ende;
     const f = a.feuchte, s = a.schimmel, co = a.co2, w = a.fenster, l = a.lueftung;
     const stats = [
@@ -592,31 +613,31 @@
         <section class="chart-card glass wide"><h3>CO2</h3>${KSCharts.legend([{ name: "CO2", color: C.lavender }, { name: "1000 ppm", color: C.warn }, { name: "1400 ppm", color: C.bad }])}<div id="c-co2" class="chart"></div></section>
         <section class="chart-card glass wide"><h3>Lüftungen</h3><div id="t-vent"></div></section>
       </div>`;
-    bindRoomChips(() => render()); bindRangeChips();
+    bindRoomChips(main, () => render()); bindRangeChips(main);
     const base = { start, end, tz: tz() };
-    const emptyNote = (id, text) => { const n = $(id); n.innerHTML = `<div class="empty">${text}</div>`; };
+    const emptyNote = (id, text) => { const n = $(id, main); n.innerHTML = `<div class="empty">${text}</div>`; };
     const draw = () => {
-      if (a.soll_ist) KSCharts.render($("#c-temp"), Object.assign({}, base, { unit: "°C", label: "Soll und Ist", series: [
+      if (a.soll_ist) KSCharts.render($("#c-temp", main), Object.assign({}, base, { unit: "°C", label: "Soll und Ist", series: [
         { name: "Soll", color: C.auto, data: a.soll_ist.soll, step: true, width: 2, dash: "6 3" },
         { name: "Ist", color: C.cloud, data: a.soll_ist.ist, width: 2 }],
         bands: [{ name: "heizt", color: C.heizt, items: a.soll_ist.heizt, opacity: .2 }, ...winBand] }));
       else emptyNote("#c-temp", "Keine Thermostatdaten.");
-      if (f && f.verlauf) KSCharts.render($("#c-hum"), Object.assign({}, base, { unit: "%", yMin: 30, label: "Luftfeuchte", series: [{ name: "Feuchte", color: C.lavender, data: f.verlauf }],
+      if (f && f.verlauf) KSCharts.render($("#c-hum", main), Object.assign({}, base, { unit: "%", yMin: 30, label: "Luftfeuchte", series: [{ name: "Feuchte", color: C.lavender, data: f.verlauf }],
         thresholds: [{ y: 70, color: C.warn, label: "70 %" }, { y: 80, color: C.bad, label: "80 %" }], bands: winBand }));
       else emptyNote("#c-hum", "Kein Feuchtesensor zugeordnet.");
-      if (s && s.verlauf) KSCharts.render($("#c-mold"), Object.assign({}, base, { unit: "%", label: "Schimmelrisiko", series: [{ name: "Risiko", color: C.auto, data: s.verlauf }],
+      if (s && s.verlauf) KSCharts.render($("#c-mold", main), Object.assign({}, base, { unit: "%", label: "Schimmelrisiko", series: [{ name: "Risiko", color: C.auto, data: s.verlauf }],
         thresholds: [{ y: 70, color: C.warn, label: "70 %" }, { y: 80, color: C.bad, label: "80 %" }] }));
       else emptyNote("#c-mold", "Kein Schimmelrisiko-Sensor.");
-      if (co && co.verlauf) KSCharts.render($("#c-co2"), Object.assign({}, base, { unit: "ppm", digits: 0, label: "CO2", yMin: 400, series: [{ name: "CO2", color: C.lavender, data: co.verlauf }],
+      if (co && co.verlauf) KSCharts.render($("#c-co2", main), Object.assign({}, base, { unit: "ppm", digits: 0, label: "CO2", yMin: 400, series: [{ name: "CO2", color: C.lavender, data: co.verlauf }],
         thresholds: [{ y: 1000, color: C.warn, label: "1000 ppm" }, { y: 1400, color: C.bad, label: "1400 ppm" }], bands: winBand,
         markers: (co.episoden || []).map(e => ({ t: e.start, v: e.max, color: e.max > 1400 ? C.bad : C.warn })) }));
       else emptyNote("#c-co2", "Kein CO2-Sensor zugeordnet.");
     };
     draw();
     clearTimeout(renderAnalysis._rz);
-    window.onresize = () => { clearTimeout(renderAnalysis._rz); renderAnalysis._rz = setTimeout(() => { if (S.tab === "auswertung") draw(); }, 200); };
+    window.onresize = () => { clearTimeout(renderAnalysis._rz); renderAnalysis._rz = setTimeout(() => { if (S.tab === "auswertung" && !stale(main)) draw(); }, 200); };
     const ev = (l && l.ereignisse) || [];
-    $("#t-vent").innerHTML = ev.length ? `<table class="plain"><thead><tr><th>Beginn</th><th>Dauer</th><th>Feuchte</th><th>CO2</th></tr></thead><tbody>${
+    $("#t-vent", main).innerHTML = ev.length ? `<table class="plain"><thead><tr><th>Beginn</th><th>Dauer</th><th>Feuchte</th><th>CO2</th></tr></thead><tbody>${
       ev.slice().reverse().slice(0, 15).map(e => `<tr><td>${fmtDate(e.start)}</td><td>${num(e.dauer_min, 0)} min</td>
         <td>${e.feuchte_abfall == null ? "–" : `${num(e.feuchte_start, 0)} % → −${num(e.feuchte_abfall)}`}</td>
         <td>${e.co2_abfall == null ? "–" : `${num(e.co2_start, 0)} ppm → −${num(e.co2_abfall, 0)}`}</td></tr>`).join("")}</tbody></table>
@@ -627,6 +648,7 @@
   // ------------------------------------------------------------------ Berichte
   async function renderReports(main, selectId) {
     const { data: list } = await api("berichte");
+    if (stale(main)) return;
     const b = S.info.bericht;
     const cur = selectId || (list[0] && list[0].id);
     main.innerHTML = `<div class="bar"><h2 class="grow">Wochenberichte</h2>
@@ -640,25 +662,26 @@
           : '<div class="empty small">Noch kein Bericht vorhanden.</div>'}</nav>
         <article class="rep-view glass" id="rep-view"><div class="muted">Bericht wählen.</div></article>
       </div>`;
-    $("#r-new").addEventListener("click", async () => {
-      const btn = $("#r-new"); btn.disabled = true; btn.textContent = "Wird erstellt …";
+    $("#r-new", main).addEventListener("click", async () => {
+      const btn = $("#r-new", main); btn.disabled = true; btn.textContent = "Wird erstellt …";
       try {
-        const push = $("#r-push").checked;
+        const push = $("#r-push", main).checked;
         const { data } = await api("berichte", { method: "POST", body: { push } });
         toast(push ? "Bericht erstellt und versendet." : "Bericht erstellt.");
         await renderReports(main, data.id);
       } catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = "Bericht jetzt erstellen"; }
     });
-    document.querySelectorAll(".rep-item").forEach(x => x.addEventListener("click", () => {
-      document.querySelectorAll(".rep-item").forEach(y => y.classList.toggle("active", y === x));
-      showReport(x.dataset.id);
+    main.querySelectorAll(".rep-item").forEach(x => x.addEventListener("click", () => {
+      main.querySelectorAll(".rep-item").forEach(y => y.classList.toggle("active", y === x));
+      showReport(x.dataset.id, main);
     }));
-    if (cur) await showReport(cur);
+    if (cur) await showReport(cur, main);
   }
 
-  async function showReport(id) {
+  async function showReport(id, main) {
     const { data: r } = await api("berichte/" + encodeURIComponent(id));
-    const view = $("#rep-view");
+    if (stale(main)) return;
+    const view = $("#rep-view", main);
     view.innerHTML = `<div class="kicker">Zeitraum ${esc(new Date(r.zeitraum.start).toLocaleDateString("de-DE", { timeZone: tz() }))} – ${esc(new Date(r.zeitraum.ende).toLocaleDateString("de-DE", { timeZone: tz() }))}</div>
       <p class="intro">${esc(r.einleitung)}</p>
       <section><h3>Heizstunden</h3><table class="plain"><thead><tr><th>Raum</th><th>Heizzeit</th><th>Feuchte max</th><th>Schimmel max</th><th>CO2 max</th><th>Fenster offen</th></tr></thead><tbody>

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 – 2026-09-27
+
+- Behoben: Die Reiter „Steuerung“, „Coach“ und die übrigen Reiter wurden nach einer langsam ladenden Übersicht von dieser überschrieben, man landete immer wieder auf der Übersicht. Ein veralteter Ladevorgang schreibt nicht mehr in die sichtbare Ansicht.
+- Oberfläche wird über versionierte Pfade (`static/<version>/…`) und mit `Cache-Control: no-cache` ausgeliefert, damit nach einem Update keine zwischengespeicherte ältere Oberfläche läuft.
+
 ## 1.1.0 – 2026-09-26
 
 - Neuer Reiter „Steuerung“: je Raum Betriebsart Auto, Hand oder Aus, zeitweise Temperatur (bis Planwechsel, 1 h, 3 h, dauerhaft; nur in Auto), Handwert, Boost (30, 60, 120 min) und „Zurück zum Plan“. Alle Befehle laufen über die Integration PM Klima; Klima Studio schaltet keine Thermostate selbst.

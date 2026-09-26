@@ -13,6 +13,7 @@ import pytest
 
 from conftest import LOCAL, WISSEN_TEST
 from fake_ha import TOKEN
+from klimastudio import __version__
 from klimastudio.coach import ki
 from klimastudio.coach import store as store_mod
 from klimastudio.coach.engine import (
@@ -684,4 +685,4 @@ async def test_events_api(app_client, fake):
 async def test_info_contains_coach(app_client):
     info = await (await app_client.get("/api/info")).json()
     assert info["coach"] == {"ki_entitaet": "ai_task.claude_ai_task", "anwesenheit": True}
-    assert info["version"] == "1.1.0"
+    assert info["version"] == __version__

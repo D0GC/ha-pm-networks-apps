@@ -80,6 +80,9 @@ def _setze_header(request: web.Request, headers: Any) -> None:
     headers.setdefault("Referrer-Policy", "same-origin")
     if request.path.startswith("/api/"):
         headers.setdefault("Cache-Control", "no-store")
+    elif request.path.startswith("/static/") and request.path.endswith((".js", ".css")):
+        # Immer beim Server nachfragen (304 bei unveränderter Datei), damit nie eine veraltete Oberfläche läuft
+        headers.setdefault("Cache-Control", "no-cache")
 
 
 @web.middleware
@@ -284,6 +287,21 @@ async def index(request: web.Request) -> web.Response:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     html = html.replace("__BASE__", ingress_base(request)).replace("__VERSION__", __version__)
     return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
+async def static_versioned(request: web.Request) -> web.FileResponse:
+    """/static/<version>/<datei>: versionierter Pfad gegen Browser-Caches, die die Query ignorieren.
+
+    Jede Versionsangabe liefert die aktuelle Datei; der Pfad darf STATIC_DIR nicht verlassen.
+    """
+    base = STATIC_DIR.resolve()
+    try:
+        path = (base / request.match_info["datei"]).resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        raise web.HTTPNotFound() from None
+    if not path.is_relative_to(base) or not path.is_file():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path)
 
 
 async def api_info(request: web.Request) -> web.Response:
@@ -599,6 +617,7 @@ def create_app(ks: KlimaStudio, networks: list[Any] | None = None) -> web.Applic
     r.add_post("/api/coach/ki", api_coach_ki_post)
     r.add_get("/api/coach/ki/{id}", api_coach_ki_get)
     r.add_get("/api/ereignisse", api_ereignisse)
+    r.add_get(r"/static/{version:\d+(?:\.\d+)+[0-9A-Za-z.+-]*}/{datei:.+}", static_versioned)
     r.add_static("/static", STATIC_DIR, show_index=False, append_version=False)
     return app
 
