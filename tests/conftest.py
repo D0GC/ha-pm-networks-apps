@@ -18,6 +18,8 @@ from klimastudio.config import Options  # noqa: E402
 from klimastudio.ha_client import HAClient  # noqa: E402
 from klimastudio.server import KlimaStudio, create_app  # noqa: E402
 
+WISSEN_TEST = Path(__file__).parent / "wissen_test.json"
+
 LOCAL = [ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128")]
 
 
@@ -51,10 +53,12 @@ def options() -> Options:
 
 @pytest.fixture
 async def studio(ha_client, options, tmp_path):
-    ks = KlimaStudio(options, ha_client, data_dir=tmp_path)
+    ks = KlimaStudio(options, ha_client, data_dir=tmp_path, wissen_pfad=WISSEN_TEST)
     yield ks
     if ks.scheduler:
         await ks.scheduler.stop()
+    await ks.heizperiode.stop()
+    ks.store.close()
 
 
 @pytest.fixture

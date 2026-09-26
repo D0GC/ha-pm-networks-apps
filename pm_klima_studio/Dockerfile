@@ -2,7 +2,7 @@
 # der Supervisor (ab 2026.04 ohne build.yaml) baut damit für die jeweilige Plattform.
 FROM ghcr.io/home-assistant/base-python:3.13-alpine3.24-2026.08.0
 
-ARG BUILD_VERSION=1.0.1
+ARG BUILD_VERSION=1.1.0
 ARG BUILD_ARCH=amd64
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,9 +14,11 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --only-binary=:all: -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
+# app enthält auch die Wissensdatenbank des Klima-Coachs (klimastudio/coach/wissen.json).
 COPY app /opt/pm_klima_studio
 COPY rootfs /
 RUN chmod a+x /etc/s6-overlay/s6-rc.d/pm-klima-studio/run /etc/s6-overlay/s6-rc.d/pm-klima-studio/finish \
+    && test -s /opt/pm_klima_studio/klimastudio/coach/wissen.json \
     && python3 -m compileall -q /opt/pm_klima_studio
 
 WORKDIR /opt/pm_klima_studio

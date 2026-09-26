@@ -63,14 +63,14 @@ class HAClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"}
 
-    async def rest(self, method: str, path: str, **kwargs: Any) -> Any:
+    async def rest(self, method: str, path: str, timeout: float | None = None, **kwargs: Any) -> Any:
         url = f"{self.api_url}/{path.lstrip('/')}"
         try:
             async with self._session.request(
                 method,
                 url,
                 headers=self._headers,
-                timeout=aiohttp.ClientTimeout(total=self._timeout),
+                timeout=aiohttp.ClientTimeout(total=timeout or self._timeout),
                 **kwargs,
             ) as resp:
                 if resp.status >= 400:
@@ -90,8 +90,22 @@ class HAClient:
     async def get_config(self) -> dict[str, Any]:
         return await self.rest("GET", "config")
 
-    async def call_service(self, domain: str, service: str, data: dict[str, Any]) -> Any:
-        return await self.rest("POST", f"services/{domain}/{service}", json=data)
+    async def call_service(
+        self,
+        domain: str,
+        service: str,
+        data: dict[str, Any],
+        return_response: bool = False,
+        timeout: float | None = None,
+    ) -> Any:
+        """Dienst aufrufen. Mit ``return_response`` wird ``service_response`` zurückgegeben
+        (REST ``POST /api/services/<domain>/<service>?return_response``)."""
+        if not return_response:
+            return await self.rest("POST", f"services/{domain}/{service}", timeout=timeout, json=data)
+        result = await self.rest("POST", f"services/{domain}/{service}?return_response", timeout=timeout, json=data)
+        if isinstance(result, dict):
+            return result.get("service_response")
+        return None
 
     async def history_period_rest(
         self,
@@ -229,6 +243,13 @@ class HAClient:
         if message.get("type") != "schedule/update":
             raise ValueError("schedule/update erwartet")
         return await self.ws_command(dict(message))
+
+    async def input_boolean_create(self, name: str, icon: str | None = None) -> dict[str, Any]:
+        """``input_boolean/create`` (helpers/collection.py); Ergebnis enthält ``id``."""
+        payload: dict[str, Any] = {"type": "input_boolean/create", "name": name}
+        if icon:
+            payload["icon"] = icon
+        return await self.ws_command(payload)
 
     async def entity_registry_get(self, entity_id: str) -> dict[str, Any]:
         return await self.ws_command({"type": "config/entity_registry/get", "entity_id": entity_id})
