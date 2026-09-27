@@ -1,4 +1,22 @@
 configuration:
+  betriebsart:
+    name: Betriebsart
+    description: >-
+      pm_networks, wenn die Integration PM Klima installiert ist (Standard). generisch für beliebige
+      Thermostate (climate-Entitäten) ohne PM Klima; Räume ergeben sich dann aus den Bereichen in Home Assistant.
+  plan_anwenden:
+    name: Heizplan anwenden
+    description: >-
+      Nur Betriebsart generisch. Klima Studio stellt die Thermostate nach den Heizplänen ein (Standard an).
+  sommer_aktion:
+    name: Verhalten im Sommer
+    description: >-
+      Nur Betriebsart generisch. plan_pausieren_und_aus pausiert die Heizpläne und schaltet Räume im
+      Plan-Modus aus (Standard), plan_pausieren pausiert nur die Heizpläne.
+  absenktemperatur:
+    name: Absenktemperatur
+    description: >-
+      Nur Betriebsart generisch. Solltemperatur außerhalb der Heizplan-Blöcke in °C (Standard 17).
   bericht_tag:
     name: Berichtstag
     description: Wochentag, an dem der Wochenbericht erstellt wird.

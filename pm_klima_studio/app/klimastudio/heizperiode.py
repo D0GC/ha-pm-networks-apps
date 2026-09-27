@@ -1,9 +1,10 @@
 """Heizperiode / Sommerautomatik.
 
-Die App schaltet ausschließlich eine Freigabe-Entität (Standard
+Betriebsart pm_networks: Die App schaltet ausschließlich eine Freigabe-Entität (Standard
 ``input_boolean.pm_heizperiode``), die in der Integration PM Klima als
 ``freigabe_entitaet`` eingetragen ist. on = Heizperiode, off = Sommer.
-Thermostate werden nie direkt angesprochen.
+Thermostate werden nie direkt angesprochen. Die Wirkung (Schalten, Verknüpfung) liegt im
+Adapter der Betriebsart (``adapter.heizperiode_anwenden``, ``adapter.freigabe_verknuepft``).
 
 Schutz vor versehentlicher Sperre im Winter:
 
@@ -31,10 +32,11 @@ from zoneinfo import ZoneInfo
 from aiohttp import web
 
 from . import analytics as an
+from .adapter import Adapter, adapter_fuer
 from .coach.store import CoachStore, jetzt_iso
 from .config import Options
 from .ha_client import HAClient, HAError
-from .steuerung import SPERRE_SENSOR, json_fehler
+from .steuerung import json_fehler
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -214,9 +216,11 @@ class Heizperiode:
         store: CoachStore,
         tz: Callable[[], ZoneInfo],
         bereit: Callable[[], bool] | None = None,
+        adapter: Adapter | None = None,
     ) -> None:
         self.client = client
         self.opts = opts
+        self.adapter = adapter or adapter_fuer(opts, client)
         self.store = store
         self._tz = tz
         self._bereit = bereit or (lambda: True)
@@ -236,6 +240,11 @@ class Heizperiode:
     # ------------------------------------------------------------- Hintergrund
 
     def start(self) -> None:
+        if not self.adapter.heizperiode_wirksam:
+            _LOGGER.info(
+                "Heizperiode in der Betriebsart %s noch ohne Wirkung, keine Hintergrundprüfung", self.adapter.betriebsart
+            )
+            return
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run())
 
@@ -317,7 +326,7 @@ class Heizperiode:
     async def _schalten(self, an_: bool, grund: str, modus: str, entitaet: str | None = None) -> bool:
         """Freigabe schalten. True nur, wenn der Zustand danach tatsächlich stimmt."""
         eid = entitaet or self.entitaet
-        await self.client.call_service("input_boolean", "turn_on" if an_ else "turn_off", {"entity_id": eid})
+        await self.adapter.heizperiode_anwenden(an_, eid)
         nachher = await self._zustand_lesen(eid)
         if _an_aus(nachher) is not an_:
             _LOGGER.warning(
@@ -420,10 +429,7 @@ class Heizperiode:
         e_aktiv, grund = await self._entscheidung(einst, bisher, aktiv)
         if st is None:
             grund = f"{grund} Die Freigabe-Entität {self.entitaet} fehlt."
-        verknuepft: bool | None = None
-        sperre = by_id.get(SPERRE_SENSOR)
-        if zustand == "off" and sperre is not None:
-            verknuepft = (sperre.get("attributes") or {}).get("sperre_grund") == "freigabe_aus"
+        verknuepft = self.adapter.freigabe_verknuepft(by_id, zustand)
         abweichung: dict[str, Any] | None = None
         if st is not None and e_aktiv is not None and aktiv is not e_aktiv:
             eigen = gespeichert.get("entitaet") == self.entitaet
@@ -456,6 +462,7 @@ class Heizperiode:
         }
 
     async def einstellen(self, body: dict[str, Any]) -> dict[str, Any]:
+        self.adapter.heizperiode_pruefen_schreiben()
         alt = await self.einstellungen()
         neu = pruefe_einstellungen(body, alt)
         if neu["modus"] in ("heizperiode", "sommer") and not self.schreibbar:
@@ -501,6 +508,7 @@ class Heizperiode:
         return True, "Neu angelegt ohne eindeutiges Ende der Heizperiode: Heizperiode als sicherer Startzustand."
 
     async def einrichten(self) -> dict[str, Any]:
+        self.adapter.heizperiode_pruefen_schreiben()
         states = await self.client.get_states()
         if any(s.get("entity_id") == self.entitaet for s in states):
             raise json_fehler(web.HTTPConflict, f"{self.entitaet} ist bereits vorhanden.", "vorhanden")

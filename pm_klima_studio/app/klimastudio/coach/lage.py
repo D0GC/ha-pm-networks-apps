@@ -16,7 +16,6 @@ from .. import analytics as an
 from .. import schedule as sch
 from ..config import Room
 from ..ha_client import HAError
-from ..steuerung import integration_status, raum_zustand
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -269,11 +268,12 @@ def woche_aus_analyse(a: dict[str, Any] | None) -> dict[str, Any]:
 def raum_kontext(
     room: Room,
     by_id: dict[str, dict[str, Any]],
-    opts: Any,
+    adapter: Any,
     woche: dict[str, Any],
     plan: dict[str, Any],
 ) -> dict[str, Any]:
-    z = raum_zustand(room, by_id, opts)
+    """``adapter``: Adapter der Betriebsart (liefert den Raumzustand wie GET /api/steuerung)."""
+    z = adapter.raum_zustand(room, by_id)
     cl = by_id.get(room.climate or "")
     overlay = z["overlay_bis"]
     boost = z["boost_bis"]
@@ -383,7 +383,7 @@ class LageDienst:
         forecast = await self._forecast(by_id)
         wetter, wetter_tage = wetter_auswerten(forecast, now.date(), tz)
         plaene = await self._plaene(rooms)
-        integ = integration_status(by_id)
+        integ = ks.adapter.lage_integration(by_id)
         anw, personen = anwesenheit(by_id)
         mittel = [t["mittel"] for t in hp["tagesmittel"]]
         hp_aktiv = hp["aktiv"] if hp["aktiv"] is not None else hp["entscheidung"]["aktiv"]
@@ -397,16 +397,14 @@ class LageDienst:
             "wetter": wetter,
             "zeit": {"monat": now.month, "stunde": now.hour, "wochentag": now.weekday()},
             "heizperiode": {"aktiv": hp_aktiv, "modus": hp["modus"]},
-            "integration": {"aktiv": integ["aktiv"], "gesperrt": integ["gesperrt"]},
+            "integration": {"aktiv": integ.get("aktiv"), "gesperrt": integ.get("gesperrt")},
             "anwesenheit": anw,
         }
         raeume = []
         for room in rooms:
             woche = await self._woche_fuer(room)
             plan = plan_kennzahlen(plaene.get(room.raum))
-            raeume.append({**global_ctx, "raum": raum_kontext(room, by_id, ks.opts, woche, plan)})
-        emp = by_id.get(ks.opts.empfehlung) or {}
-        liste = (emp.get("attributes") or {}).get("liste")
+            raeume.append({**global_ctx, "raum": raum_kontext(room, by_id, ks.adapter, woche, plan)})
         return {
             "global": global_ctx,
             "raeume": raeume,
@@ -417,7 +415,7 @@ class LageDienst:
                 "wetter_tage": wetter_tage,
                 "plaene": {slug: plan_kompakt(t) for slug, t in plaene.items()},
                 "personen": personen,
-                "empfehlungen": liste if isinstance(liste, list) else [],
+                "empfehlungen": ks.adapter.empfehlungen(by_id),
             },
         }
 

@@ -1,0 +1,2605 @@
+{
+ "freigabe": {
+  "/api/coach": {
+   "integration": [
+    {
+     "prioritaet": 11,
+     "raum": "Wohnzimmer",
+     "text": "Wohnzimmer: Wandfeuchte erhöht (76 %)",
+     "thema": "schimmel_warnung"
+    },
+    {
+     "prioritaet": 20,
+     "raum": "Badezimmer",
+     "text": "Badezimmer: Lüften empfohlen, etwa 10 Minuten",
+     "thema": "lueften"
+    }
+   ],
+   "saison": "sommer",
+   "stand": "<stand>",
+   "tipps": [
+    {
+     "begruendung": "Regelmäßig hohe Werte zeigen, dass bei Nutzung zu selten gelüftet wird. Lüften Sie vor und während längerer Aufenthalte.",
+     "id": "co2_woche_1400:wohnzimmer",
+     "massnahme": {
+      "typ": "lueften"
+     },
+     "prioritaet": 2,
+     "raum": "wohnzimmer",
+     "raum_name": "Wohnzimmer",
+     "regel": "co2_woche_1400",
+     "text": "Im Raum Wohnzimmer lag der CO2-Wert in der letzten Woche 37,6 Stunden über 1400 ppm.",
+     "thema": "co2",
+     "titel": "Häufig stark verbrauchte Luft"
+    },
+    {
+     "begruendung": "Räume im Handbetrieb, mit Überbrückung oder Boost werden von der Freigabe nicht gesperrt.",
+     "id": "sommer_handbetrieb_heizt:badezimmer",
+     "massnahme": {
+      "aktion": "modus",
+      "modus": "auto",
+      "typ": "steuerung"
+     },
+     "prioritaet": 2,
+     "raum": "badezimmer",
+     "raum_name": "Badezimmer",
+     "regel": "sommer_handbetrieb_heizt",
+     "text": "Der Raum Badezimmer steht im Handbetrieb auf 23 °C. Die Sommersperre gilt nur für Räume im Zeitplanbetrieb, dieser Raum heizt daher weiter.",
+     "thema": "energie",
+     "titel": "Handbetrieb heizt trotz Sommerbetrieb"
+    },
+    {
+     "begruendung": "Ein Boost öffnet das Ventil vollständig. Für eine gezielte Temperatur eignet sich eine Überbrückung besser.",
+     "id": "boost_aktiv:wohnzimmer",
+     "massnahme": {
+      "aktion": "zurueck",
+      "typ": "steuerung"
+     },
+     "prioritaet": 3,
+     "raum": "wohnzimmer",
+     "raum_name": "Wohnzimmer",
+     "regel": "boost_aktiv",
+     "text": "Im Raum Wohnzimmer läuft ein Boost mit Höchsttemperatur. Er endet automatisch nach der eingestellten Dauer.",
+     "thema": "heizen",
+     "titel": "Boost ist aktiv"
+    }
+   ],
+   "wissen_version": "1.1.0"
+  },
+  "/api/coach/lagebericht": {
+   "anwesenheit": true,
+   "entitaet": "ai_task.claude_ai_task",
+   "lage": {
+    "anwesenheit": {
+     "anzahl_zuhause": 1,
+     "jemand_zuhause": true
+    },
+    "aussen": {
+     "feuchte": 79.0,
+     "tagesmittel_gestern": 8.0,
+     "temperatur": 8.3
+    },
+    "empfehlungen_integration": [
+     "Wohnzimmer: Wandfeuchte erhöht (76 %)",
+     "Badezimmer: Lüften empfohlen, etwa 10 Minuten"
+    ],
+    "heizperiode": {
+     "aktiv": false,
+     "entscheidung": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C.",
+     "heizgrenze": 13.0,
+     "hysterese": 2.0,
+     "modus": "automatik",
+     "tagesmittel": [
+      {
+       "datum": "2026-01-07",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-08",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-09",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-10",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-11",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-12",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-13",
+       "mittel": 8.0
+      }
+     ]
+    },
+    "integration": {
+     "aktiv": true,
+     "gesperrt": true,
+     "sperre_grund": "freigabe_aus",
+     "sperre_wirkung": "aus"
+    },
+    "lokale_tipps": [
+     {
+      "prioritaet": 2,
+      "raum": "wohnzimmer",
+      "titel": "Häufig stark verbrauchte Luft"
+     },
+     {
+      "prioritaet": 2,
+      "raum": "badezimmer",
+      "titel": "Handbetrieb heizt trotz Sommerbetrieb"
+     },
+     {
+      "prioritaet": 3,
+      "raum": "wohnzimmer",
+      "titel": "Boost ist aktiv"
+     }
+    ],
+    "personen": [
+     {
+      "name": "Dominik",
+      "zuhause": "ja"
+     },
+     {
+      "name": "Gina Perina",
+      "zuhause": "nein"
+     }
+    ],
+    "raeume": [
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 46.6,
+       "grund": "manuell",
+       "hvac_action": "heating",
+       "ist": 22.0,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "heat",
+       "nassraum": true,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 48.6,
+       "schlafraum": false,
+       "soll": 23.0,
+       "soll_ist_abstand": 1.0,
+       "zeitplan_temperatur": 22.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "05:00-07:00 25 °C",
+        "18:00-22:00 22 °C"
+       ],
+       "sa,so": [
+        "18:00-22:00 22 °C"
+       ]
+      },
+      "name": "Badezimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 25.0,
+       "min_temp": 22.0,
+       "nacht": false,
+       "stunden_woche": 38.0,
+       "tage_ohne_block": 0
+      },
+      "raum": "badezimmer",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": null,
+       "fenster_laengste_min": null,
+       "fenster_offen_stunden": null,
+       "feuchte_max": 82.5,
+       "feuchte_mittel": 55.3,
+       "feuchte_stunden_70": 9.92,
+       "feuchte_stunden_80": 1.75,
+       "heizstunden": 33.17,
+       "lueftung_anzahl": null,
+       "lueftung_bewertung": null,
+       "schimmel_max": 95.2,
+       "schimmel_stunden_70": 19.25,
+       "schimmel_stunden_80": 8.75
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 48.6,
+       "grund": "overlay",
+       "hvac_action": "idle",
+       "ist": 20.9,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": true,
+       "overlay_dauerhaft": true,
+       "preset": "zeitplan",
+       "schimmel": 51.2,
+       "schlafraum": false,
+       "soll": 22.5,
+       "soll_ist_abstand": 1.6,
+       "zeitplan_temperatur": 21.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "06:00-08:30 21 °C",
+        "16:00-22:00 21 °C"
+       ],
+       "sa,so": [
+        "08:00-22:00 21 °C"
+       ]
+      },
+      "name": "Küche",
+      "plan": {
+       "leer": false,
+       "max_temp": 21.0,
+       "min_temp": 21.0,
+       "nacht": false,
+       "stunden_woche": 70.5,
+       "tage_ohne_block": 0
+      },
+      "raum": "kuche",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": 7,
+       "fenster_laengste_min": 20,
+       "fenster_offen_stunden": 2.33,
+       "feuchte_max": 60.8,
+       "feuchte_mittel": 52.4,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 34.58,
+       "lueftung_anzahl": 7,
+       "lueftung_bewertung": "wirksam",
+       "schimmel_max": 67.0,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 46.6,
+       "grund": "aus",
+       "hvac_action": "heating",
+       "ist": 17.2,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "off",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 48.6,
+       "schlafraum": true,
+       "soll": 17.0,
+       "soll_ist_abstand": -0.2,
+       "zeitplan_temperatur": 17.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr,sa,so": [
+        "06:00-07:30 20 °C",
+        "21:00-23:00 20 °C"
+       ]
+      },
+      "name": "Schlafzimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 20.0,
+       "min_temp": 20.0,
+       "nacht": false,
+       "stunden_woche": 24.5,
+       "tage_ohne_block": 0
+      },
+      "raum": "schlafzimmer",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": null,
+       "fenster_laengste_min": null,
+       "fenster_offen_stunden": null,
+       "feuchte_max": 57.5,
+       "feuchte_mittel": 52.1,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 34.12,
+       "lueftung_anzahl": null,
+       "lueftung_bewertung": null,
+       "schimmel_max": 62.8,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": true,
+       "co2": 902.0,
+       "fenster_offen": false,
+       "feuchte": 44.5,
+       "grund": "boost",
+       "hvac_action": "heating",
+       "ist": 20.9,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 45.9,
+       "schlafraum": false,
+       "soll": 25.0,
+       "soll_ist_abstand": 4.1,
+       "zeitplan_temperatur": 21.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "06:00-08:30 21 °C",
+        "16:00-22:30 21 °C"
+       ],
+       "sa,so": [
+        "08:00-23:00 21 °C"
+       ]
+      },
+      "name": "Wohnzimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 21.0,
+       "min_temp": 21.0,
+       "nacht": false,
+       "stunden_woche": 75.0,
+       "tage_ohne_block": 0
+      },
+      "raum": "wohnzimmer",
+      "woche": {
+       "co2_max": 1750.0,
+       "co2_stunden_1000": 84.42,
+       "co2_stunden_1400": 37.58,
+       "fenster_anzahl": 15,
+       "fenster_laengste_min": 95,
+       "fenster_offen_stunden": 4.5,
+       "feuchte_max": 57.6,
+       "feuchte_mittel": 50.9,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 36.62,
+       "lueftung_anzahl": 15,
+       "lueftung_bewertung": "mäßig",
+       "schimmel_max": 62.9,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     }
+    ],
+    "stand": "2026-01-14T20:17+01:00",
+    "wetter": {
+     "max_morgen": 11.0,
+     "min_3tage": 3.0,
+     "min_morgen": 3.0,
+     "regen_morgen": true,
+     "tage": [
+      {
+       "datum": "2026-01-14",
+       "max": 10.0,
+       "min": 2.0,
+       "niederschlag_mm": 0.0,
+       "niederschlag_wahrscheinlichkeit": 10.0,
+       "zustand": "cloudy"
+      },
+      {
+       "datum": "2026-01-15",
+       "max": 11.0,
+       "min": 3.0,
+       "niederschlag_mm": 3.2,
+       "niederschlag_wahrscheinlichkeit": 80.0,
+       "zustand": "rainy"
+      },
+      {
+       "datum": "2026-01-16",
+       "max": 12.0,
+       "min": 4.0,
+       "niederschlag_mm": 0.0,
+       "niederschlag_wahrscheinlichkeit": 10.0,
+       "zustand": "cloudy"
+      }
+     ]
+    },
+    "zeit": {
+     "monat": 1,
+     "stunde": 20,
+     "wochentag": 2
+    }
+   },
+   "zeichen": 5675
+  },
+  "/api/heizperiode": {
+   "abweichung": {
+    "ausstehend": true,
+    "ist": "off",
+    "seit": null,
+    "soll": "on",
+    "winterschutz_ab": null
+   },
+   "aktiv": false,
+   "aussen_aktuell": 8.30670225611256,
+   "entitaet": "input_boolean.pm_heizperiode",
+   "entscheidung": {
+    "aktiv": true,
+    "grund": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C."
+   },
+   "heizgrenze": 13.0,
+   "hysterese": 2.0,
+   "letzte_aenderung": null,
+   "modus": "automatik",
+   "naechste_pruefung": null,
+   "tage_ende": 3,
+   "tage_start": 2,
+   "tagesmittel": [
+    {
+     "datum": "2026-01-07",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-08",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-09",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-10",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-11",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-12",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-13",
+     "mittel": 8.0
+    }
+   ],
+   "verknuepft": true,
+   "vorhanden": true,
+   "zustand": "off"
+  },
+  "/api/info": {
+   "bericht": {
+    "naechster": null,
+    "notify": [
+     "notify.mobile_app_bewohner_a"
+    ],
+    "tag": "sonntag",
+    "uhrzeit": "18:00"
+   },
+   "coach": {
+    "anwesenheit": true,
+    "ki_entitaet": "ai_task.claude_ai_task"
+   },
+   "ha_version": "2026.9.3",
+   "raeume": [
+    {
+     "climate": "climate.pm_badezimmer",
+     "co2": null,
+     "fenster": null,
+     "feuchte": "sensor.badezimmer_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_badezimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_badezimmer_luftqualitaet",
+     "name": "Badezimmer",
+     "raum": "badezimmer",
+     "schedule": "schedule.heizplan_badezimmer",
+     "schimmel": "sensor.pm_badezimmer_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_kuche",
+     "co2": null,
+     "fenster": "binary_sensor.pm_kuche_fenster_offen",
+     "feuchte": "sensor.kuche_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_kuche_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_kuche_luftqualitaet",
+     "name": "Küche",
+     "raum": "kuche",
+     "schedule": "schedule.heizplan_kuche",
+     "schimmel": "sensor.pm_kuche_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_schlafzimmer",
+     "co2": null,
+     "fenster": null,
+     "feuchte": "sensor.schlafzimmer_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_schlafzimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_schlafzimmer_luftqualitaet",
+     "name": "Schlafzimmer",
+     "raum": "schlafzimmer",
+     "schedule": "schedule.heizplan_schlafzimmer",
+     "schimmel": "sensor.pm_schlafzimmer_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_wohnzimmer",
+     "co2": "sensor.wetterstation_kohlendioxid",
+     "fenster": "binary_sensor.pm_wohnzimmer_fenster_offen",
+     "feuchte": "sensor.wohnzimmerluftfeuchte",
+     "lueften": "binary_sensor.pm_wohnzimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_wohnzimmer_luftqualitaet",
+     "name": "Wohnzimmer",
+     "raum": "wohnzimmer",
+     "schedule": "schedule.heizplan_wohnzimmer",
+     "schimmel": "sensor.pm_wohnzimmer_schimmelrisiko"
+    }
+   ],
+   "version": "1.1.1",
+   "zeitzone": "Europe/Berlin"
+  },
+  "/api/steuerung": {
+   "heizperiode": {
+    "abweichung": {
+     "ausstehend": true,
+     "ist": "off",
+     "seit": null,
+     "soll": "on",
+     "winterschutz_ab": null
+    },
+    "aktiv": false,
+    "aussen_aktuell": 8.30670225611256,
+    "entitaet": "input_boolean.pm_heizperiode",
+    "entscheidung": {
+     "aktiv": true,
+     "grund": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C."
+    },
+    "heizgrenze": 13.0,
+    "hysterese": 2.0,
+    "letzte_aenderung": null,
+    "modus": "automatik",
+    "naechste_pruefung": null,
+    "tage_ende": 3,
+    "tage_start": 2,
+    "tagesmittel": [
+     {
+      "datum": "2026-01-07",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-08",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-09",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-10",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-11",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-12",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-13",
+      "mittel": 8.0
+     }
+    ],
+    "verknuepft": true,
+    "vorhanden": true,
+    "zustand": "off"
+   },
+   "integration": {
+    "aktiv": true,
+    "beschreibung": "Heizperiode aus",
+    "gesperrt": true,
+    "sperre_grund": "freigabe_aus",
+    "sperre_wirkung": "aus"
+   },
+   "raeume": {
+    "badezimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_badezimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "manuell",
+     "hvac_action": "heating",
+     "ist": 22.0,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "heat",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Badezimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 23.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 22.0
+    },
+    "kuche": {
+     "anzeige": "Zeitweise 22.5 °C",
+     "boost_bis": null,
+     "climate": "climate.pm_kuche",
+     "fenster_offen": false,
+     "feuchte": 48.6,
+     "grund": "overlay",
+     "hvac_action": "idle",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Küche",
+     "overlay_bis": "dauerhaft",
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 22.5,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    },
+    "schlafzimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_schlafzimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "aus",
+     "hvac_action": "heating",
+     "ist": 17.2,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "off",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Schlafzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 17.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 17.0
+    },
+    "wohnzimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": "2026-01-14T19:47:00+00:00",
+     "climate": "climate.pm_wohnzimmer",
+     "fenster_offen": false,
+     "feuchte": 44.5,
+     "grund": "boost",
+     "hvac_action": "heating",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Wohnzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 25.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    }
+   }
+  },
+  "POST /api/heizperiode": {
+   "antwort": {
+    "abweichung": null,
+    "aktiv": true,
+    "aussen_aktuell": 8.30670225611256,
+    "entitaet": "input_boolean.pm_heizperiode",
+    "entscheidung": {
+     "aktiv": true,
+     "grund": "Manuell auf Heizperiode gestellt."
+    },
+    "heizgrenze": 13.0,
+    "hysterese": 2.0,
+    "letzte_aenderung": "2026-01-14T19:17:00+00:00",
+    "modus": "heizperiode",
+    "naechste_pruefung": null,
+    "tage_ende": 3,
+    "tage_start": 2,
+    "tagesmittel": [
+     {
+      "datum": "2026-01-07",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-08",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-09",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-10",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-11",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-12",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-13",
+      "mittel": 8.0
+     }
+    ],
+    "verknuepft": null,
+    "vorhanden": true,
+    "zustand": "on"
+   },
+   "status": 200
+  },
+  "POST /api/steuerung/kuche": {
+   "antwort": {
+    "ok": true,
+    "raum": {
+     "anzeige": "Zeitweise 21.5 °C",
+     "boost_bis": null,
+     "climate": "climate.pm_kuche",
+     "fenster_offen": false,
+     "feuchte": 48.6,
+     "grund": "overlay",
+     "hvac_action": "idle",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Küche",
+     "overlay_bis": "2026-01-14T20:17:00+00:00",
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 21.5,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    }
+   },
+   "status": 200
+  },
+  "POST /api/steuerung/schlafzimmer": {
+   "antwort": {
+    "ok": true,
+    "raum": {
+     "anzeige": "Zeitplan",
+     "boost_bis": "2026-01-14T19:47:00+00:00",
+     "climate": "climate.pm_schlafzimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "boost",
+     "hvac_action": "heating",
+     "ist": 17.2,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "off",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Schlafzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 25.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 17.0
+    }
+   },
+   "status": 200
+  },
+  "dienste": [
+   [
+    "weather",
+    "get_forecasts",
+    {
+     "entity_id": "weather.dwd_zuhause",
+     "type": "daily"
+    }
+   ],
+   [
+    "pm_heizung",
+    "set_overlay",
+    {
+     "dauer": 60,
+     "entity_id": "climate.pm_kuche",
+     "temperatur": 21.5
+    }
+   ],
+   [
+    "pm_heizung",
+    "boost",
+    {
+     "dauer": 30,
+     "entity_id": "climate.pm_schlafzimmer"
+    }
+   ],
+   [
+    "input_boolean",
+    "turn_on",
+    {
+     "entity_id": "input_boolean.pm_heizperiode"
+    }
+   ]
+  ],
+  "ki_prompt": "Sie sind der Klima-Coach für ein Zuhause mit der Heizungsintegration PM Klima.\nPM Klima steuert die Heizkörperthermostate raumweise nach Heizplänen (Zeitplänen), mit Fensterabschaltung,\nzeitweisen Temperaturen (Overlay), Boost und einer Sperre außerhalb der Heizperiode.\n\nAufgabe: Geben Sie konkrete, datengestützte Tipps zum Heizen, Lüften und Energiesparen für dieses Zuhause.\nRegeln:\n- Schreiben Sie auf Deutsch in der Sie-Form, ruhig und sachlich, ohne Ausrufezeichen und ohne Emoji.\n- Stützen Sie jeden Tipp auf Werte aus dem Lagebericht und nennen Sie diese Werte in der Begründung.\n- Erfinden Sie nichts, was nicht in den Daten steht. Fehlende Werte (null) bedeuten: unbekannt.\n- Die lokalen Tipps (Feld lokale_tipps) kennt der Nutzer bereits. Berücksichtigen Sie sie, wiederholen Sie sie nicht.\n- Höchstens 8 Tipps, nach Wichtigkeit sortiert. Priorität 1 = dringend, 2 = empfehlenswert, 3 = Hinweis.\n- raum ist das Kürzel aus dem Lagebericht (Feld raeume[].raum) oder null für das ganze Zuhause.\n- massnahme ist optional: typ heizplan (Heizplan des Raums anpassen), steuerung (Raumsteuerung, optional\n  temperatur in °C und dauer in Minuten), lueften oder info. Maßnahmen werden nur vorgeschlagen, nie automatisch ausgeführt.\n\nAntworten Sie ausschließlich mit einem JSON-Objekt ohne weiteren Text, genau in dieser Form:\n{\"zusammenfassung\": \"2 bis 4 Sätze zur Gesamtlage\",\n \"tipps\": [{\"titel\": \"kurz\", \"text\": \"Empfehlung\", \"begruendung\": \"warum, mit Werten\", \"prioritaet\": 1,\n            \"raum\": \"kuerzel oder null\", \"massnahme\": {\"typ\": \"info\"}}]}\n\nLagebericht (JSON):\n{\"stand\":\"2026-01-14T20:17+01:00\",\"zeit\":{\"monat\":1,\"stunde\":20,\"wochentag\":2},\"aussen\":{\"temperatur\":8.3,\"feuchte\":79.0,\"tagesmittel_gestern\":8.0},\"wetter\":{\"min_morgen\":3.0,\"max_morgen\":11.0,\"min_3tage\":3.0,\"regen_morgen\":true,\"tage\":[{\"datum\":\"2026-01-14\",\"min\":2.0,\"max\":10.0,\"niederschlag_mm\":0.0,\"niederschlag_wahrscheinlichkeit\":10.0,\"zustand\":\"cloudy\"},{\"datum\":\"2026-01-15\",\"min\":3.0,\"max\":11.0,\"niederschlag_mm\":3.2,\"niederschlag_wahrscheinlichkeit\":80.0,\"zustand\":\"rainy\"},{\"datum\":\"2026-01-16\",\"min\":4.0,\"max\":12.0,\"niederschlag_mm\":0.0,\"niederschlag_wahrscheinlichkeit\":10.0,\"zustand\":\"cloudy\"}]},\"heizperiode\":{\"aktiv\":true,\"modus\":\"heizperiode\",\"heizgrenze\":13.0,\"hysterese\":2.0,\"entscheidung\":\"Manuell auf Heizperiode gestellt.\",\"tagesmittel\":[{\"datum\":\"2026-01-07\",\"mittel\":8.0},{\"datum\":\"2026-01-08\",\"mittel\":8.0},{\"datum\":\"2026-01-09\",\"mittel\":8.0},{\"datum\":\"2026-01-10\",\"mittel\":8.0},{\"datum\":\"2026-01-11\",\"mittel\":8.0},{\"datum\":\"2026-01-12\",\"mittel\":8.0},{\"datum\":\"2026-01-13\",\"mittel\":8.0}]},\"integration\":{\"aktiv\":true,\"gesperrt\":true,\"sperre_grund\":\"freigabe_aus\",\"sperre_wirkung\":\"aus\"},\"raeume\":[{\"raum\":\"badezimmer\",\"name\":\"Badezimmer\",\"aktuell\":{\"nassraum\":true,\"schlafraum\":false,\"modus\":\"heat\",\"preset\":\"zeitplan\",\"grund\":\"manuell\",\"hvac_action\":\"heating\",\"ist\":22.0,\"soll\":23.0,\"zeitplan_temperatur\":22.0,\"feuchte\":46.6,\"schimmel\":48.6,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":1.0},\"woche\":{\"heizstunden\":33.17,\"feuchte_mittel\":55.3,\"feuchte_max\":82.5,\"feuchte_stunden_70\":9.92,\"feuchte_stunden_80\":1.75,\"schimmel_max\":95.2,\"schimmel_stunden_70\":19.25,\"schimmel_stunden_80\":8.75,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":null,\"fenster_offen_stunden\":null,\"fenster_laengste_min\":null,\"lueftung_bewertung\":null,\"lueftung_anzahl\":null},\"plan\":{\"max_temp\":25.0,\"min_temp\":22.0,\"stunden_woche\":38.0,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"05:00-07:00 25 °C\",\"18:00-22:00 22 °C\"],\"sa,so\":[\"18:00-22:00 22 °C\"]}},{\"raum\":\"kuche\",\"name\":\"Küche\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"overlay\",\"hvac_action\":\"idle\",\"ist\":20.9,\"soll\":21.5,\"zeitplan_temperatur\":21.0,\"feuchte\":48.6,\"schimmel\":51.2,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":true,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":0.6},\"woche\":{\"heizstunden\":34.58,\"feuchte_mittel\":52.4,\"feuchte_max\":60.8,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":67.0,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":7,\"fenster_offen_stunden\":2.33,\"fenster_laengste_min\":20,\"lueftung_bewertung\":\"wirksam\",\"lueftung_anzahl\":7},\"plan\":{\"max_temp\":21.0,\"min_temp\":21.0,\"stunden_woche\":70.5,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"06:00-08:30 21 °C\",\"16:00-22:00 21 °C\"],\"sa,so\":[\"08:00-22:00 21 °C\"]}},{\"raum\":\"schlafzimmer\",\"name\":\"Schlafzimmer\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":true,\"modus\":\"off\",\"preset\":\"zeitplan\",\"grund\":\"boost\",\"hvac_action\":\"heating\",\"ist\":17.2,\"soll\":25.0,\"zeitplan_temperatur\":17.0,\"feuchte\":46.6,\"schimmel\":48.6,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":true,\"soll_ist_abstand\":7.8},\"woche\":{\"heizstunden\":34.12,\"feuchte_mittel\":52.1,\"feuchte_max\":57.5,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":62.8,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":null,\"fenster_offen_stunden\":null,\"fenster_laengste_min\":null,\"lueftung_bewertung\":null,\"lueftung_anzahl\":null},\"plan\":{\"max_temp\":20.0,\"min_temp\":20.0,\"stunden_woche\":24.5,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr,sa,so\":[\"06:00-07:30 20 °C\",\"21:00-23:00 20 °C\"]}},{\"raum\":\"wohnzimmer\",\"name\":\"Wohnzimmer\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"boost\",\"hvac_action\":\"heating\",\"ist\":20.9,\"soll\":25.0,\"zeitplan_temperatur\":21.0,\"feuchte\":44.5,\"schimmel\":45.9,\"co2\":902.0,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":true,\"soll_ist_abstand\":4.1},\"woche\":{\"heizstunden\":36.62,\"feuchte_mittel\":50.9,\"feuchte_max\":57.6,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":62.9,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":1750.0,\"co2_stunden_1000\":84.42,\"co2_stunden_1400\":37.58,\"fenster_anzahl\":15,\"fenster_offen_stunden\":4.5,\"fenster_laengste_min\":95,\"lueftung_bewertung\":\"mäßig\",\"lueftung_anzahl\":15},\"plan\":{\"max_temp\":21.0,\"min_temp\":21.0,\"stunden_woche\":75.0,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"06:00-08:30 21 °C\",\"16:00-22:30 21 °C\"],\"sa,so\":[\"08:00-23:00 21 °C\"]}}],\"lokale_tipps\":[{\"titel\":\"Häufig stark verbrauchte Luft\",\"raum\":\"wohnzimmer\",\"prioritaet\":2},{\"titel\":\"Schlafzimmer wird wärmer als nötig geheizt\",\"raum\":\"schlafzimmer\",\"prioritaet\":2},{\"titel\":\"Integration sperrt trotz Heizperiode\",\"raum\":null,\"prioritaet\":2},{\"titel\":\"Raum im Handbetrieb\",\"raum\":\"badezimmer\",\"prioritaet\":2},{\"titel\":\"Stoßlüften statt Kippstellung\",\"raum\":\"wohnzimmer\",\"prioritaet\":2},{\"titel\":\"Bad wird sehr warm geheizt\",\"raum\":\"badezimmer\",\"prioritaet\":3},{\"titel\":\"Boost ist aktiv\",\"raum\":\"schlafzimmer\",\"prioritaet\":3},{\"titel\":\"Boost ist aktiv\",\"raum\":\"wohnzimmer\",\"prioritaet\":3}],\"empfehlungen_integration\":[\"Wohnzimmer: Wandfeuchte erhöht (76 %)\",\"Badezimmer: Lüften empfohlen, etwa 10 Minuten\"],\"anwesenheit\":{\"jemand_zuhause\":true,\"anzahl_zuhause\":1},\"personen\":[{\"name\":\"Dominik\",\"zuhause\":\"ja\"},{\"name\":\"Gina Perina\",\"zuhause\":\"nein\"}]}"
+ },
+ "wissen_produktiv": {
+  "/api/coach": {
+   "integration": [
+    {
+     "prioritaet": 11,
+     "raum": "Wohnzimmer",
+     "text": "Wohnzimmer: Wandfeuchte erhöht (76 %)",
+     "thema": "schimmel_warnung"
+    },
+    {
+     "prioritaet": 20,
+     "raum": "Badezimmer",
+     "text": "Badezimmer: Lüften empfohlen, etwa 10 Minuten",
+     "thema": "lueften"
+    }
+   ],
+   "saison": "heizperiode",
+   "stand": "<stand>",
+   "tipps": [
+    {
+     "begruendung": "Regelmäßig hohe Werte zeigen, dass bei Nutzung zu selten gelüftet wird. Lüften Sie vor und während längerer Aufenthalte.",
+     "id": "co2_woche_1400:wohnzimmer",
+     "massnahme": {
+      "typ": "lueften"
+     },
+     "prioritaet": 2,
+     "raum": "wohnzimmer",
+     "raum_name": "Wohnzimmer",
+     "regel": "co2_woche_1400",
+     "text": "Im Raum Wohnzimmer lag der CO2-Wert in der letzten Woche 37,6 Stunden über 1400 ppm.",
+     "thema": "co2",
+     "titel": "Häufig stark verbrauchte Luft"
+    },
+    {
+     "begruendung": "Kühlere Schlafräume fördern den Schlaf und sparen Energie. Jedes Grad weniger spart rund 6 % Heizenergie.",
+     "id": "schlafraum_plan_zu_warm:schlafzimmer",
+     "massnahme": {
+      "typ": "heizplan"
+     },
+     "prioritaet": 2,
+     "raum": "schlafzimmer",
+     "raum_name": "Schlafzimmer",
+     "regel": "schlafraum_plan_zu_warm",
+     "text": "Der Heizplan im Raum Schlafzimmer sieht bis zu 20 °C vor. Für Schlafräume gelten 16 bis 18 °C als angenehm.",
+     "thema": "energie",
+     "titel": "Schlafzimmer wird wärmer als nötig geheizt"
+    },
+    {
+     "begruendung": "Ein gekipptes Fenster tauscht die Luft nur langsam aus, kühlt aber Sturz und Laibung stark ab. Dort bildet sich dann leicht Schimmel.",
+     "id": "kipplueften:wohnzimmer",
+     "massnahme": {
+      "typ": "lueften"
+     },
+     "prioritaet": 2,
+     "raum": "wohnzimmer",
+     "raum_name": "Wohnzimmer",
+     "regel": "kipplueften",
+     "text": "Im Raum Wohnzimmer war ein Fenster in der letzten Woche bis zu 95 Minuten am Stück geöffnet. Lüften Sie besser mehrmals täglich 5 bis 10 Minuten mit weit geöffnetem Fenster.",
+     "thema": "lueften",
+     "titel": "Stoßlüften statt Kippstellung"
+    },
+    {
+     "begruendung": "Jedes Grad weniger spart rund 6 % Heizenergie. Außerhalb der Nutzung genügt eine niedrigere Temperatur.",
+     "id": "bad_plan_zu_warm:badezimmer",
+     "massnahme": {
+      "typ": "heizplan"
+     },
+     "prioritaet": 3,
+     "raum": "badezimmer",
+     "raum_name": "Badezimmer",
+     "regel": "bad_plan_zu_warm",
+     "text": "Der Heizplan im Raum Badezimmer sieht bis zu 25 °C vor. Für die Nutzungszeiten reichen meist 22 bis 23 °C.",
+     "thema": "energie",
+     "titel": "Bad wird sehr warm geheizt"
+    }
+   ],
+   "wissen_version": "1.1.0"
+  },
+  "/api/coach/lagebericht": {
+   "anwesenheit": true,
+   "entitaet": "ai_task.claude_ai_task",
+   "lage": {
+    "anwesenheit": {
+     "anzahl_zuhause": 1,
+     "jemand_zuhause": true
+    },
+    "aussen": {
+     "feuchte": 79.0,
+     "tagesmittel_gestern": 8.0,
+     "temperatur": 8.3
+    },
+    "empfehlungen_integration": [
+     "Wohnzimmer: Wandfeuchte erhöht (76 %)",
+     "Badezimmer: Lüften empfohlen, etwa 10 Minuten"
+    ],
+    "heizperiode": {
+     "aktiv": true,
+     "entscheidung": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt.",
+     "heizgrenze": 13.0,
+     "hysterese": 2.0,
+     "modus": "automatik",
+     "tagesmittel": [
+      {
+       "datum": "2026-01-07",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-08",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-09",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-10",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-11",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-12",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-13",
+       "mittel": 8.0
+      }
+     ]
+    },
+    "integration": {
+     "aktiv": true,
+     "gesperrt": false,
+     "sperre_grund": null,
+     "sperre_wirkung": "aus"
+    },
+    "lokale_tipps": [
+     {
+      "prioritaet": 2,
+      "raum": "wohnzimmer",
+      "titel": "Häufig stark verbrauchte Luft"
+     },
+     {
+      "prioritaet": 2,
+      "raum": "schlafzimmer",
+      "titel": "Schlafzimmer wird wärmer als nötig geheizt"
+     },
+     {
+      "prioritaet": 2,
+      "raum": "wohnzimmer",
+      "titel": "Stoßlüften statt Kippstellung"
+     },
+     {
+      "prioritaet": 3,
+      "raum": "badezimmer",
+      "titel": "Bad wird sehr warm geheizt"
+     }
+    ],
+    "personen": [
+     {
+      "name": "Dominik",
+      "zuhause": "ja"
+     },
+     {
+      "name": "Gina Perina",
+      "zuhause": "nein"
+     }
+    ],
+    "raeume": [
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 46.6,
+       "grund": "zeitplan",
+       "hvac_action": "heating",
+       "ist": 22.0,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": true,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 48.6,
+       "schlafraum": false,
+       "soll": 22.0,
+       "soll_ist_abstand": 0.0,
+       "zeitplan_temperatur": 22.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "05:00-07:00 25 °C",
+        "18:00-22:00 22 °C"
+       ],
+       "sa,so": [
+        "18:00-22:00 22 °C"
+       ]
+      },
+      "name": "Badezimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 25.0,
+       "min_temp": 22.0,
+       "nacht": false,
+       "stunden_woche": 38.0,
+       "tage_ohne_block": 0
+      },
+      "raum": "badezimmer",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": null,
+       "fenster_laengste_min": null,
+       "fenster_offen_stunden": null,
+       "feuchte_max": 82.5,
+       "feuchte_mittel": 55.3,
+       "feuchte_stunden_70": 9.92,
+       "feuchte_stunden_80": 1.75,
+       "heizstunden": 33.17,
+       "lueftung_anzahl": null,
+       "lueftung_bewertung": null,
+       "schimmel_max": 95.2,
+       "schimmel_stunden_70": 19.25,
+       "schimmel_stunden_80": 8.75
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 48.6,
+       "grund": "zeitplan",
+       "hvac_action": "idle",
+       "ist": 20.9,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 51.2,
+       "schlafraum": false,
+       "soll": 21.0,
+       "soll_ist_abstand": 0.1,
+       "zeitplan_temperatur": 21.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "06:00-08:30 21 °C",
+        "16:00-22:00 21 °C"
+       ],
+       "sa,so": [
+        "08:00-22:00 21 °C"
+       ]
+      },
+      "name": "Küche",
+      "plan": {
+       "leer": false,
+       "max_temp": 21.0,
+       "min_temp": 21.0,
+       "nacht": false,
+       "stunden_woche": 70.5,
+       "tage_ohne_block": 0
+      },
+      "raum": "kuche",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": 7,
+       "fenster_laengste_min": 20,
+       "fenster_offen_stunden": 2.33,
+       "feuchte_max": 60.8,
+       "feuchte_mittel": 52.4,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 34.58,
+       "lueftung_anzahl": 7,
+       "lueftung_bewertung": "wirksam",
+       "schimmel_max": 67.0,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 46.6,
+       "grund": "zeitplan",
+       "hvac_action": "heating",
+       "ist": 17.2,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 48.6,
+       "schlafraum": true,
+       "soll": 17.0,
+       "soll_ist_abstand": -0.2,
+       "zeitplan_temperatur": 17.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr,sa,so": [
+        "06:00-07:30 20 °C",
+        "21:00-23:00 20 °C"
+       ]
+      },
+      "name": "Schlafzimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 20.0,
+       "min_temp": 20.0,
+       "nacht": false,
+       "stunden_woche": 24.5,
+       "tage_ohne_block": 0
+      },
+      "raum": "schlafzimmer",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": null,
+       "fenster_laengste_min": null,
+       "fenster_offen_stunden": null,
+       "feuchte_max": 57.5,
+       "feuchte_mittel": 52.1,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 34.12,
+       "lueftung_anzahl": null,
+       "lueftung_bewertung": null,
+       "schimmel_max": 62.8,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": 902.0,
+       "fenster_offen": false,
+       "feuchte": 44.5,
+       "grund": "zeitplan",
+       "hvac_action": "heating",
+       "ist": 20.9,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 45.9,
+       "schlafraum": false,
+       "soll": 21.0,
+       "soll_ist_abstand": 0.1,
+       "zeitplan_temperatur": 21.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "06:00-08:30 21 °C",
+        "16:00-22:30 21 °C"
+       ],
+       "sa,so": [
+        "08:00-23:00 21 °C"
+       ]
+      },
+      "name": "Wohnzimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 21.0,
+       "min_temp": 21.0,
+       "nacht": false,
+       "stunden_woche": 75.0,
+       "tage_ohne_block": 0
+      },
+      "raum": "wohnzimmer",
+      "woche": {
+       "co2_max": 1750.0,
+       "co2_stunden_1000": 84.42,
+       "co2_stunden_1400": 37.58,
+       "fenster_anzahl": 15,
+       "fenster_laengste_min": 95,
+       "fenster_offen_stunden": 4.5,
+       "feuchte_max": 57.6,
+       "feuchte_mittel": 50.9,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 36.62,
+       "lueftung_anzahl": 15,
+       "lueftung_bewertung": "mäßig",
+       "schimmel_max": 62.9,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     }
+    ],
+    "stand": "2026-01-14T20:17+01:00",
+    "wetter": {
+     "max_morgen": 11.0,
+     "min_3tage": 3.0,
+     "min_morgen": 3.0,
+     "regen_morgen": true,
+     "tage": [
+      {
+       "datum": "2026-01-14",
+       "max": 10.0,
+       "min": 2.0,
+       "niederschlag_mm": 0.0,
+       "niederschlag_wahrscheinlichkeit": 10.0,
+       "zustand": "cloudy"
+      },
+      {
+       "datum": "2026-01-15",
+       "max": 11.0,
+       "min": 3.0,
+       "niederschlag_mm": 3.2,
+       "niederschlag_wahrscheinlichkeit": 80.0,
+       "zustand": "rainy"
+      },
+      {
+       "datum": "2026-01-16",
+       "max": 12.0,
+       "min": 4.0,
+       "niederschlag_mm": 0.0,
+       "niederschlag_wahrscheinlichkeit": 10.0,
+       "zustand": "cloudy"
+      }
+     ]
+    },
+    "zeit": {
+     "monat": 1,
+     "stunde": 20,
+     "wochentag": 2
+    }
+   },
+   "zeichen": 5831
+  },
+  "/api/heizperiode": {
+   "abweichung": null,
+   "aktiv": null,
+   "aussen_aktuell": 8.30670225611256,
+   "entitaet": "input_boolean.pm_heizperiode",
+   "entscheidung": {
+    "aktiv": true,
+    "grund": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt."
+   },
+   "heizgrenze": 13.0,
+   "hysterese": 2.0,
+   "letzte_aenderung": null,
+   "modus": "automatik",
+   "naechste_pruefung": null,
+   "tage_ende": 3,
+   "tage_start": 2,
+   "tagesmittel": [
+    {
+     "datum": "2026-01-07",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-08",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-09",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-10",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-11",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-12",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-13",
+     "mittel": 8.0
+    }
+   ],
+   "verknuepft": null,
+   "vorhanden": false,
+   "zustand": null
+  },
+  "/api/info": {
+   "bericht": {
+    "naechster": null,
+    "notify": [
+     "notify.mobile_app_bewohner_a"
+    ],
+    "tag": "sonntag",
+    "uhrzeit": "18:00"
+   },
+   "coach": {
+    "anwesenheit": true,
+    "ki_entitaet": "ai_task.claude_ai_task"
+   },
+   "ha_version": "2026.9.3",
+   "raeume": [
+    {
+     "climate": "climate.pm_badezimmer",
+     "co2": null,
+     "fenster": null,
+     "feuchte": "sensor.badezimmer_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_badezimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_badezimmer_luftqualitaet",
+     "name": "Badezimmer",
+     "raum": "badezimmer",
+     "schedule": "schedule.heizplan_badezimmer",
+     "schimmel": "sensor.pm_badezimmer_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_kuche",
+     "co2": null,
+     "fenster": "binary_sensor.pm_kuche_fenster_offen",
+     "feuchte": "sensor.kuche_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_kuche_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_kuche_luftqualitaet",
+     "name": "Küche",
+     "raum": "kuche",
+     "schedule": "schedule.heizplan_kuche",
+     "schimmel": "sensor.pm_kuche_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_schlafzimmer",
+     "co2": null,
+     "fenster": null,
+     "feuchte": "sensor.schlafzimmer_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_schlafzimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_schlafzimmer_luftqualitaet",
+     "name": "Schlafzimmer",
+     "raum": "schlafzimmer",
+     "schedule": "schedule.heizplan_schlafzimmer",
+     "schimmel": "sensor.pm_schlafzimmer_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_wohnzimmer",
+     "co2": "sensor.wetterstation_kohlendioxid",
+     "fenster": "binary_sensor.pm_wohnzimmer_fenster_offen",
+     "feuchte": "sensor.wohnzimmerluftfeuchte",
+     "lueften": "binary_sensor.pm_wohnzimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_wohnzimmer_luftqualitaet",
+     "name": "Wohnzimmer",
+     "raum": "wohnzimmer",
+     "schedule": "schedule.heizplan_wohnzimmer",
+     "schimmel": "sensor.pm_wohnzimmer_schimmelrisiko"
+    }
+   ],
+   "version": "1.1.1",
+   "zeitzone": "Europe/Berlin"
+  },
+  "/api/steuerung": {
+   "heizperiode": {
+    "abweichung": null,
+    "aktiv": null,
+    "aussen_aktuell": 8.30670225611256,
+    "entitaet": "input_boolean.pm_heizperiode",
+    "entscheidung": {
+     "aktiv": true,
+     "grund": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt."
+    },
+    "heizgrenze": 13.0,
+    "hysterese": 2.0,
+    "letzte_aenderung": null,
+    "modus": "automatik",
+    "naechste_pruefung": null,
+    "tage_ende": 3,
+    "tage_start": 2,
+    "tagesmittel": [
+     {
+      "datum": "2026-01-07",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-08",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-09",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-10",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-11",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-12",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-13",
+      "mittel": 8.0
+     }
+    ],
+    "verknuepft": null,
+    "vorhanden": false,
+    "zustand": null
+   },
+   "integration": {
+    "aktiv": true,
+    "beschreibung": "Keine Sperre aktiv",
+    "gesperrt": false,
+    "sperre_grund": null,
+    "sperre_wirkung": "aus"
+   },
+   "raeume": {
+    "badezimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_badezimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "zeitplan",
+     "hvac_action": "heating",
+     "ist": 22.0,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Badezimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 22.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 22.0
+    },
+    "kuche": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_kuche",
+     "fenster_offen": false,
+     "feuchte": 48.6,
+     "grund": "zeitplan",
+     "hvac_action": "idle",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Küche",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 21.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    },
+    "schlafzimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_schlafzimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "zeitplan",
+     "hvac_action": "heating",
+     "ist": 17.2,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Schlafzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 17.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 17.0
+    },
+    "wohnzimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_wohnzimmer",
+     "fenster_offen": false,
+     "feuchte": 44.5,
+     "grund": "zeitplan",
+     "hvac_action": "heating",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Wohnzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 21.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    }
+   }
+  },
+  "POST /api/heizperiode": {
+   "antwort": {
+    "abweichung": null,
+    "aktiv": null,
+    "aussen_aktuell": 8.30670225611256,
+    "entitaet": "input_boolean.pm_heizperiode",
+    "entscheidung": {
+     "aktiv": true,
+     "grund": "Manuell auf Heizperiode gestellt. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt."
+    },
+    "heizgrenze": 13.0,
+    "hysterese": 2.0,
+    "letzte_aenderung": null,
+    "modus": "heizperiode",
+    "naechste_pruefung": null,
+    "tage_ende": 3,
+    "tage_start": 2,
+    "tagesmittel": [
+     {
+      "datum": "2026-01-07",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-08",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-09",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-10",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-11",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-12",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-13",
+      "mittel": 8.0
+     }
+    ],
+    "verknuepft": null,
+    "vorhanden": false,
+    "zustand": null
+   },
+   "status": 200
+  },
+  "POST /api/steuerung/kuche": {
+   "antwort": {
+    "ok": true,
+    "raum": {
+     "anzeige": "Zeitweise 21.5 °C",
+     "boost_bis": null,
+     "climate": "climate.pm_kuche",
+     "fenster_offen": false,
+     "feuchte": 48.6,
+     "grund": "overlay",
+     "hvac_action": "idle",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Küche",
+     "overlay_bis": "2026-01-14T20:17:00+00:00",
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 21.5,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    }
+   },
+   "status": 200
+  },
+  "POST /api/steuerung/schlafzimmer": {
+   "antwort": {
+    "ok": true,
+    "raum": {
+     "anzeige": "Zeitplan",
+     "boost_bis": "2026-01-14T19:47:00+00:00",
+     "climate": "climate.pm_schlafzimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "boost",
+     "hvac_action": "heating",
+     "ist": 17.2,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Schlafzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 25.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 17.0
+    }
+   },
+   "status": 200
+  },
+  "dienste": [
+   [
+    "weather",
+    "get_forecasts",
+    {
+     "entity_id": "weather.dwd_zuhause",
+     "type": "daily"
+    }
+   ],
+   [
+    "pm_heizung",
+    "set_overlay",
+    {
+     "dauer": 60,
+     "entity_id": "climate.pm_kuche",
+     "temperatur": 21.5
+    }
+   ],
+   [
+    "pm_heizung",
+    "boost",
+    {
+     "dauer": 30,
+     "entity_id": "climate.pm_schlafzimmer"
+    }
+   ]
+  ],
+  "ki_prompt": "Sie sind der Klima-Coach für ein Zuhause mit der Heizungsintegration PM Klima.\nPM Klima steuert die Heizkörperthermostate raumweise nach Heizplänen (Zeitplänen), mit Fensterabschaltung,\nzeitweisen Temperaturen (Overlay), Boost und einer Sperre außerhalb der Heizperiode.\n\nAufgabe: Geben Sie konkrete, datengestützte Tipps zum Heizen, Lüften und Energiesparen für dieses Zuhause.\nRegeln:\n- Schreiben Sie auf Deutsch in der Sie-Form, ruhig und sachlich, ohne Ausrufezeichen und ohne Emoji.\n- Stützen Sie jeden Tipp auf Werte aus dem Lagebericht und nennen Sie diese Werte in der Begründung.\n- Erfinden Sie nichts, was nicht in den Daten steht. Fehlende Werte (null) bedeuten: unbekannt.\n- Die lokalen Tipps (Feld lokale_tipps) kennt der Nutzer bereits. Berücksichtigen Sie sie, wiederholen Sie sie nicht.\n- Höchstens 8 Tipps, nach Wichtigkeit sortiert. Priorität 1 = dringend, 2 = empfehlenswert, 3 = Hinweis.\n- raum ist das Kürzel aus dem Lagebericht (Feld raeume[].raum) oder null für das ganze Zuhause.\n- massnahme ist optional: typ heizplan (Heizplan des Raums anpassen), steuerung (Raumsteuerung, optional\n  temperatur in °C und dauer in Minuten), lueften oder info. Maßnahmen werden nur vorgeschlagen, nie automatisch ausgeführt.\n\nAntworten Sie ausschließlich mit einem JSON-Objekt ohne weiteren Text, genau in dieser Form:\n{\"zusammenfassung\": \"2 bis 4 Sätze zur Gesamtlage\",\n \"tipps\": [{\"titel\": \"kurz\", \"text\": \"Empfehlung\", \"begruendung\": \"warum, mit Werten\", \"prioritaet\": 1,\n            \"raum\": \"kuerzel oder null\", \"massnahme\": {\"typ\": \"info\"}}]}\n\nLagebericht (JSON):\n{\"stand\":\"2026-01-14T20:17+01:00\",\"zeit\":{\"monat\":1,\"stunde\":20,\"wochentag\":2},\"aussen\":{\"temperatur\":8.3,\"feuchte\":79.0,\"tagesmittel_gestern\":8.0},\"wetter\":{\"min_morgen\":3.0,\"max_morgen\":11.0,\"min_3tage\":3.0,\"regen_morgen\":true,\"tage\":[{\"datum\":\"2026-01-14\",\"min\":2.0,\"max\":10.0,\"niederschlag_mm\":0.0,\"niederschlag_wahrscheinlichkeit\":10.0,\"zustand\":\"cloudy\"},{\"datum\":\"2026-01-15\",\"min\":3.0,\"max\":11.0,\"niederschlag_mm\":3.2,\"niederschlag_wahrscheinlichkeit\":80.0,\"zustand\":\"rainy\"},{\"datum\":\"2026-01-16\",\"min\":4.0,\"max\":12.0,\"niederschlag_mm\":0.0,\"niederschlag_wahrscheinlichkeit\":10.0,\"zustand\":\"cloudy\"}]},\"heizperiode\":{\"aktiv\":true,\"modus\":\"heizperiode\",\"heizgrenze\":13.0,\"hysterese\":2.0,\"entscheidung\":\"Manuell auf Heizperiode gestellt. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt.\",\"tagesmittel\":[{\"datum\":\"2026-01-07\",\"mittel\":8.0},{\"datum\":\"2026-01-08\",\"mittel\":8.0},{\"datum\":\"2026-01-09\",\"mittel\":8.0},{\"datum\":\"2026-01-10\",\"mittel\":8.0},{\"datum\":\"2026-01-11\",\"mittel\":8.0},{\"datum\":\"2026-01-12\",\"mittel\":8.0},{\"datum\":\"2026-01-13\",\"mittel\":8.0}]},\"integration\":{\"aktiv\":true,\"gesperrt\":false,\"sperre_grund\":null,\"sperre_wirkung\":\"aus\"},\"raeume\":[{\"raum\":\"badezimmer\",\"name\":\"Badezimmer\",\"aktuell\":{\"nassraum\":true,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"zeitplan\",\"hvac_action\":\"heating\",\"ist\":22.0,\"soll\":22.0,\"zeitplan_temperatur\":22.0,\"feuchte\":46.6,\"schimmel\":48.6,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":0.0},\"woche\":{\"heizstunden\":33.17,\"feuchte_mittel\":55.3,\"feuchte_max\":82.5,\"feuchte_stunden_70\":9.92,\"feuchte_stunden_80\":1.75,\"schimmel_max\":95.2,\"schimmel_stunden_70\":19.25,\"schimmel_stunden_80\":8.75,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":null,\"fenster_offen_stunden\":null,\"fenster_laengste_min\":null,\"lueftung_bewertung\":null,\"lueftung_anzahl\":null},\"plan\":{\"max_temp\":25.0,\"min_temp\":22.0,\"stunden_woche\":38.0,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"05:00-07:00 25 °C\",\"18:00-22:00 22 °C\"],\"sa,so\":[\"18:00-22:00 22 °C\"]}},{\"raum\":\"kuche\",\"name\":\"Küche\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"overlay\",\"hvac_action\":\"idle\",\"ist\":20.9,\"soll\":21.5,\"zeitplan_temperatur\":21.0,\"feuchte\":48.6,\"schimmel\":51.2,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":true,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":0.6},\"woche\":{\"heizstunden\":34.58,\"feuchte_mittel\":52.4,\"feuchte_max\":60.8,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":67.0,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":7,\"fenster_offen_stunden\":2.33,\"fenster_laengste_min\":20,\"lueftung_bewertung\":\"wirksam\",\"lueftung_anzahl\":7},\"plan\":{\"max_temp\":21.0,\"min_temp\":21.0,\"stunden_woche\":70.5,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"06:00-08:30 21 °C\",\"16:00-22:00 21 °C\"],\"sa,so\":[\"08:00-22:00 21 °C\"]}},{\"raum\":\"schlafzimmer\",\"name\":\"Schlafzimmer\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":true,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"boost\",\"hvac_action\":\"heating\",\"ist\":17.2,\"soll\":25.0,\"zeitplan_temperatur\":17.0,\"feuchte\":46.6,\"schimmel\":48.6,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":true,\"soll_ist_abstand\":7.8},\"woche\":{\"heizstunden\":34.12,\"feuchte_mittel\":52.1,\"feuchte_max\":57.5,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":62.8,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":null,\"fenster_offen_stunden\":null,\"fenster_laengste_min\":null,\"lueftung_bewertung\":null,\"lueftung_anzahl\":null},\"plan\":{\"max_temp\":20.0,\"min_temp\":20.0,\"stunden_woche\":24.5,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr,sa,so\":[\"06:00-07:30 20 °C\",\"21:00-23:00 20 °C\"]}},{\"raum\":\"wohnzimmer\",\"name\":\"Wohnzimmer\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"zeitplan\",\"hvac_action\":\"heating\",\"ist\":20.9,\"soll\":21.0,\"zeitplan_temperatur\":21.0,\"feuchte\":44.5,\"schimmel\":45.9,\"co2\":902.0,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":0.1},\"woche\":{\"heizstunden\":36.62,\"feuchte_mittel\":50.9,\"feuchte_max\":57.6,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":62.9,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":1750.0,\"co2_stunden_1000\":84.42,\"co2_stunden_1400\":37.58,\"fenster_anzahl\":15,\"fenster_offen_stunden\":4.5,\"fenster_laengste_min\":95,\"lueftung_bewertung\":\"mäßig\",\"lueftung_anzahl\":15},\"plan\":{\"max_temp\":21.0,\"min_temp\":21.0,\"stunden_woche\":75.0,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"06:00-08:30 21 °C\",\"16:00-22:30 21 °C\"],\"sa,so\":[\"08:00-23:00 21 °C\"]}}],\"lokale_tipps\":[{\"titel\":\"Häufig stark verbrauchte Luft\",\"raum\":\"wohnzimmer\",\"prioritaet\":2},{\"titel\":\"Schlafzimmer wird wärmer als nötig geheizt\",\"raum\":\"schlafzimmer\",\"prioritaet\":2},{\"titel\":\"Stoßlüften statt Kippstellung\",\"raum\":\"wohnzimmer\",\"prioritaet\":2},{\"titel\":\"Bad wird sehr warm geheizt\",\"raum\":\"badezimmer\",\"prioritaet\":3},{\"titel\":\"Boost ist aktiv\",\"raum\":\"schlafzimmer\",\"prioritaet\":3}],\"empfehlungen_integration\":[\"Wohnzimmer: Wandfeuchte erhöht (76 %)\",\"Badezimmer: Lüften empfohlen, etwa 10 Minuten\"],\"anwesenheit\":{\"jemand_zuhause\":true,\"anzahl_zuhause\":1},\"personen\":[{\"name\":\"Dominik\",\"zuhause\":\"ja\"},{\"name\":\"Gina Perina\",\"zuhause\":\"nein\"}]}"
+ },
+ "wissen_test": {
+  "/api/coach": {
+   "integration": [
+    {
+     "prioritaet": 11,
+     "raum": "Wohnzimmer",
+     "text": "Wohnzimmer: Wandfeuchte erhöht (76 %)",
+     "thema": "schimmel_warnung"
+    },
+    {
+     "prioritaet": 20,
+     "raum": "Badezimmer",
+     "text": "Badezimmer: Lüften empfohlen, etwa 10 Minuten",
+     "thema": "lueften"
+    }
+   ],
+   "saison": "heizperiode",
+   "stand": "<stand>",
+   "tipps": [
+    {
+     "begruendung": "Test.",
+     "id": "bad_steuern:badezimmer",
+     "massnahme": {
+      "aktion": "boost",
+      "dauer": 30,
+      "typ": "steuerung"
+     },
+     "prioritaet": 1,
+     "raum": "badezimmer",
+     "raum_name": "Badezimmer",
+     "regel": "bad_steuern",
+     "text": "Soll 22 °C.",
+     "thema": "heizen",
+     "titel": "Bad prüfen"
+    },
+    {
+     "begruendung": "Nassraum: ja.",
+     "id": "feuchte_anzeigen:badezimmer",
+     "massnahme": {
+      "typ": "lueften"
+     },
+     "prioritaet": 2,
+     "raum": "badezimmer",
+     "raum_name": "Badezimmer",
+     "regel": "feuchte_anzeigen",
+     "text": "Die Feuchte in Badezimmer liegt bei 46,6 %.",
+     "thema": "feuchte",
+     "titel": "Feuchte Badezimmer"
+    },
+    {
+     "begruendung": "Nassraum: nein.",
+     "id": "feuchte_anzeigen:kuche",
+     "massnahme": {
+      "typ": "lueften"
+     },
+     "prioritaet": 2,
+     "raum": "kuche",
+     "raum_name": "Küche",
+     "regel": "feuchte_anzeigen",
+     "text": "Die Feuchte in Küche liegt bei 48,6 %.",
+     "thema": "feuchte",
+     "titel": "Feuchte Küche"
+    },
+    {
+     "begruendung": "Nassraum: nein.",
+     "id": "feuchte_anzeigen:schlafzimmer",
+     "massnahme": {
+      "typ": "lueften"
+     },
+     "prioritaet": 2,
+     "raum": "schlafzimmer",
+     "raum_name": "Schlafzimmer",
+     "regel": "feuchte_anzeigen",
+     "text": "Die Feuchte in Schlafzimmer liegt bei 46,6 %.",
+     "thema": "feuchte",
+     "titel": "Feuchte Schlafzimmer"
+    },
+    {
+     "begruendung": "Nassraum: nein.",
+     "id": "feuchte_anzeigen:wohnzimmer",
+     "massnahme": {
+      "typ": "lueften"
+     },
+     "prioritaet": 2,
+     "raum": "wohnzimmer",
+     "raum_name": "Wohnzimmer",
+     "regel": "feuchte_anzeigen",
+     "text": "Die Feuchte in Wohnzimmer liegt bei 44,5 %.",
+     "thema": "feuchte",
+     "titel": "Feuchte Wohnzimmer"
+    },
+    {
+     "begruendung": "Test.",
+     "id": "heizperiode_global:global",
+     "massnahme": null,
+     "prioritaet": 3,
+     "raum": null,
+     "raum_name": null,
+     "regel": "heizperiode_global",
+     "text": "Außen 8,3 °C, Raum –.",
+     "thema": "energie",
+     "titel": "Heizperiode"
+    }
+   ],
+   "wissen_version": "test-1"
+  },
+  "/api/coach/lagebericht": {
+   "anwesenheit": true,
+   "entitaet": "ai_task.claude_ai_task",
+   "lage": {
+    "anwesenheit": {
+     "anzahl_zuhause": 1,
+     "jemand_zuhause": true
+    },
+    "aussen": {
+     "feuchte": 79.0,
+     "tagesmittel_gestern": 8.0,
+     "temperatur": 8.3
+    },
+    "empfehlungen_integration": [
+     "Wohnzimmer: Wandfeuchte erhöht (76 %)",
+     "Badezimmer: Lüften empfohlen, etwa 10 Minuten"
+    ],
+    "heizperiode": {
+     "aktiv": true,
+     "entscheidung": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt.",
+     "heizgrenze": 13.0,
+     "hysterese": 2.0,
+     "modus": "automatik",
+     "tagesmittel": [
+      {
+       "datum": "2026-01-07",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-08",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-09",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-10",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-11",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-12",
+       "mittel": 8.0
+      },
+      {
+       "datum": "2026-01-13",
+       "mittel": 8.0
+      }
+     ]
+    },
+    "integration": {
+     "aktiv": true,
+     "gesperrt": false,
+     "sperre_grund": null,
+     "sperre_wirkung": "aus"
+    },
+    "lokale_tipps": [
+     {
+      "prioritaet": 1,
+      "raum": "badezimmer",
+      "titel": "Bad prüfen"
+     },
+     {
+      "prioritaet": 2,
+      "raum": "badezimmer",
+      "titel": "Feuchte Badezimmer"
+     },
+     {
+      "prioritaet": 2,
+      "raum": "kuche",
+      "titel": "Feuchte Küche"
+     },
+     {
+      "prioritaet": 2,
+      "raum": "schlafzimmer",
+      "titel": "Feuchte Schlafzimmer"
+     },
+     {
+      "prioritaet": 2,
+      "raum": "wohnzimmer",
+      "titel": "Feuchte Wohnzimmer"
+     },
+     {
+      "prioritaet": 3,
+      "raum": null,
+      "titel": "Heizperiode"
+     }
+    ],
+    "personen": [
+     {
+      "name": "Dominik",
+      "zuhause": "ja"
+     },
+     {
+      "name": "Gina Perina",
+      "zuhause": "nein"
+     }
+    ],
+    "raeume": [
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 46.6,
+       "grund": "zeitplan",
+       "hvac_action": "heating",
+       "ist": 22.0,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": true,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 48.6,
+       "schlafraum": false,
+       "soll": 22.0,
+       "soll_ist_abstand": 0.0,
+       "zeitplan_temperatur": 22.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "05:00-07:00 25 °C",
+        "18:00-22:00 22 °C"
+       ],
+       "sa,so": [
+        "18:00-22:00 22 °C"
+       ]
+      },
+      "name": "Badezimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 25.0,
+       "min_temp": 22.0,
+       "nacht": false,
+       "stunden_woche": 38.0,
+       "tage_ohne_block": 0
+      },
+      "raum": "badezimmer",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": null,
+       "fenster_laengste_min": null,
+       "fenster_offen_stunden": null,
+       "feuchte_max": 82.5,
+       "feuchte_mittel": 55.3,
+       "feuchte_stunden_70": 9.92,
+       "feuchte_stunden_80": 1.75,
+       "heizstunden": 33.17,
+       "lueftung_anzahl": null,
+       "lueftung_bewertung": null,
+       "schimmel_max": 95.2,
+       "schimmel_stunden_70": 19.25,
+       "schimmel_stunden_80": 8.75
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 48.6,
+       "grund": "zeitplan",
+       "hvac_action": "idle",
+       "ist": 20.9,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 51.2,
+       "schlafraum": false,
+       "soll": 21.0,
+       "soll_ist_abstand": 0.1,
+       "zeitplan_temperatur": 21.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "06:00-08:30 21 °C",
+        "16:00-22:00 21 °C"
+       ],
+       "sa,so": [
+        "08:00-22:00 21 °C"
+       ]
+      },
+      "name": "Küche",
+      "plan": {
+       "leer": false,
+       "max_temp": 21.0,
+       "min_temp": 21.0,
+       "nacht": false,
+       "stunden_woche": 70.5,
+       "tage_ohne_block": 0
+      },
+      "raum": "kuche",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": 7,
+       "fenster_laengste_min": 20,
+       "fenster_offen_stunden": 2.33,
+       "feuchte_max": 60.8,
+       "feuchte_mittel": 52.4,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 34.58,
+       "lueftung_anzahl": 7,
+       "lueftung_bewertung": "wirksam",
+       "schimmel_max": 67.0,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": null,
+       "fenster_offen": false,
+       "feuchte": 46.6,
+       "grund": "zeitplan",
+       "hvac_action": "heating",
+       "ist": 17.2,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 48.6,
+       "schlafraum": true,
+       "soll": 17.0,
+       "soll_ist_abstand": -0.2,
+       "zeitplan_temperatur": 17.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr,sa,so": [
+        "06:00-07:30 20 °C",
+        "21:00-23:00 20 °C"
+       ]
+      },
+      "name": "Schlafzimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 20.0,
+       "min_temp": 20.0,
+       "nacht": false,
+       "stunden_woche": 24.5,
+       "tage_ohne_block": 0
+      },
+      "raum": "schlafzimmer",
+      "woche": {
+       "co2_max": null,
+       "co2_stunden_1000": null,
+       "co2_stunden_1400": null,
+       "fenster_anzahl": null,
+       "fenster_laengste_min": null,
+       "fenster_offen_stunden": null,
+       "feuchte_max": 57.5,
+       "feuchte_mittel": 52.1,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 34.12,
+       "lueftung_anzahl": null,
+       "lueftung_bewertung": null,
+       "schimmel_max": 62.8,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     },
+     {
+      "aktuell": {
+       "boost_aktiv": false,
+       "co2": 902.0,
+       "fenster_offen": false,
+       "feuchte": 44.5,
+       "grund": "zeitplan",
+       "hvac_action": "heating",
+       "ist": 20.9,
+       "lueften_empfohlen": false,
+       "luftqualitaet": "gut",
+       "modus": "auto",
+       "nassraum": false,
+       "overlay_aktiv": false,
+       "overlay_dauerhaft": false,
+       "preset": "zeitplan",
+       "schimmel": 45.9,
+       "schlafraum": false,
+       "soll": 21.0,
+       "soll_ist_abstand": 0.1,
+       "zeitplan_temperatur": 21.0
+      },
+      "heizplan": {
+       "mo,di,mi,do,fr": [
+        "06:00-08:30 21 °C",
+        "16:00-22:30 21 °C"
+       ],
+       "sa,so": [
+        "08:00-23:00 21 °C"
+       ]
+      },
+      "name": "Wohnzimmer",
+      "plan": {
+       "leer": false,
+       "max_temp": 21.0,
+       "min_temp": 21.0,
+       "nacht": false,
+       "stunden_woche": 75.0,
+       "tage_ohne_block": 0
+      },
+      "raum": "wohnzimmer",
+      "woche": {
+       "co2_max": 1750.0,
+       "co2_stunden_1000": 84.42,
+       "co2_stunden_1400": 37.58,
+       "fenster_anzahl": 15,
+       "fenster_laengste_min": 95,
+       "fenster_offen_stunden": 4.5,
+       "feuchte_max": 57.6,
+       "feuchte_mittel": 50.9,
+       "feuchte_stunden_70": 0.0,
+       "feuchte_stunden_80": 0.0,
+       "heizstunden": 36.62,
+       "lueftung_anzahl": 15,
+       "lueftung_bewertung": "mäßig",
+       "schimmel_max": 62.9,
+       "schimmel_stunden_70": 0.0,
+       "schimmel_stunden_80": 0.0
+      }
+     }
+    ],
+    "stand": "2026-01-14T20:17+01:00",
+    "wetter": {
+     "max_morgen": 11.0,
+     "min_3tage": 3.0,
+     "min_morgen": 3.0,
+     "regen_morgen": true,
+     "tage": [
+      {
+       "datum": "2026-01-14",
+       "max": 10.0,
+       "min": 2.0,
+       "niederschlag_mm": 0.0,
+       "niederschlag_wahrscheinlichkeit": 10.0,
+       "zustand": "cloudy"
+      },
+      {
+       "datum": "2026-01-15",
+       "max": 11.0,
+       "min": 3.0,
+       "niederschlag_mm": 3.2,
+       "niederschlag_wahrscheinlichkeit": 80.0,
+       "zustand": "rainy"
+      },
+      {
+       "datum": "2026-01-16",
+       "max": 12.0,
+       "min": 4.0,
+       "niederschlag_mm": 0.0,
+       "niederschlag_wahrscheinlichkeit": 10.0,
+       "zustand": "cloudy"
+      }
+     ]
+    },
+    "zeit": {
+     "monat": 1,
+     "stunde": 20,
+     "wochentag": 2
+    }
+   },
+   "zeichen": 5878
+  },
+  "/api/heizperiode": {
+   "abweichung": null,
+   "aktiv": null,
+   "aussen_aktuell": 8.30670225611256,
+   "entitaet": "input_boolean.pm_heizperiode",
+   "entscheidung": {
+    "aktiv": true,
+    "grund": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt."
+   },
+   "heizgrenze": 13.0,
+   "hysterese": 2.0,
+   "letzte_aenderung": null,
+   "modus": "automatik",
+   "naechste_pruefung": null,
+   "tage_ende": 3,
+   "tage_start": 2,
+   "tagesmittel": [
+    {
+     "datum": "2026-01-07",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-08",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-09",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-10",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-11",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-12",
+     "mittel": 8.0
+    },
+    {
+     "datum": "2026-01-13",
+     "mittel": 8.0
+    }
+   ],
+   "verknuepft": null,
+   "vorhanden": false,
+   "zustand": null
+  },
+  "/api/info": {
+   "bericht": {
+    "naechster": null,
+    "notify": [
+     "notify.mobile_app_bewohner_a"
+    ],
+    "tag": "sonntag",
+    "uhrzeit": "18:00"
+   },
+   "coach": {
+    "anwesenheit": true,
+    "ki_entitaet": "ai_task.claude_ai_task"
+   },
+   "ha_version": "2026.9.3",
+   "raeume": [
+    {
+     "climate": "climate.pm_badezimmer",
+     "co2": null,
+     "fenster": null,
+     "feuchte": "sensor.badezimmer_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_badezimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_badezimmer_luftqualitaet",
+     "name": "Badezimmer",
+     "raum": "badezimmer",
+     "schedule": "schedule.heizplan_badezimmer",
+     "schimmel": "sensor.pm_badezimmer_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_kuche",
+     "co2": null,
+     "fenster": "binary_sensor.pm_kuche_fenster_offen",
+     "feuchte": "sensor.kuche_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_kuche_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_kuche_luftqualitaet",
+     "name": "Küche",
+     "raum": "kuche",
+     "schedule": "schedule.heizplan_kuche",
+     "schimmel": "sensor.pm_kuche_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_schlafzimmer",
+     "co2": null,
+     "fenster": null,
+     "feuchte": "sensor.schlafzimmer_luftfeuchtigkeit",
+     "lueften": "binary_sensor.pm_schlafzimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_schlafzimmer_luftqualitaet",
+     "name": "Schlafzimmer",
+     "raum": "schlafzimmer",
+     "schedule": "schedule.heizplan_schlafzimmer",
+     "schimmel": "sensor.pm_schlafzimmer_schimmelrisiko"
+    },
+    {
+     "climate": "climate.pm_wohnzimmer",
+     "co2": "sensor.wetterstation_kohlendioxid",
+     "fenster": "binary_sensor.pm_wohnzimmer_fenster_offen",
+     "feuchte": "sensor.wohnzimmerluftfeuchte",
+     "lueften": "binary_sensor.pm_wohnzimmer_lueften_empfohlen",
+     "luftqualitaet": "sensor.pm_wohnzimmer_luftqualitaet",
+     "name": "Wohnzimmer",
+     "raum": "wohnzimmer",
+     "schedule": "schedule.heizplan_wohnzimmer",
+     "schimmel": "sensor.pm_wohnzimmer_schimmelrisiko"
+    }
+   ],
+   "version": "1.1.1",
+   "zeitzone": "Europe/Berlin"
+  },
+  "/api/steuerung": {
+   "heizperiode": {
+    "abweichung": null,
+    "aktiv": null,
+    "aussen_aktuell": 8.30670225611256,
+    "entitaet": "input_boolean.pm_heizperiode",
+    "entscheidung": {
+     "aktiv": true,
+     "grund": "Tagesmittel der letzten 2 Tage unter der Heizgrenze von 13,0 °C. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt."
+    },
+    "heizgrenze": 13.0,
+    "hysterese": 2.0,
+    "letzte_aenderung": null,
+    "modus": "automatik",
+    "naechste_pruefung": null,
+    "tage_ende": 3,
+    "tage_start": 2,
+    "tagesmittel": [
+     {
+      "datum": "2026-01-07",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-08",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-09",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-10",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-11",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-12",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-13",
+      "mittel": 8.0
+     }
+    ],
+    "verknuepft": null,
+    "vorhanden": false,
+    "zustand": null
+   },
+   "integration": {
+    "aktiv": true,
+    "beschreibung": "Keine Sperre aktiv",
+    "gesperrt": false,
+    "sperre_grund": null,
+    "sperre_wirkung": "aus"
+   },
+   "raeume": {
+    "badezimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_badezimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "zeitplan",
+     "hvac_action": "heating",
+     "ist": 22.0,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Badezimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 22.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 22.0
+    },
+    "kuche": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_kuche",
+     "fenster_offen": false,
+     "feuchte": 48.6,
+     "grund": "zeitplan",
+     "hvac_action": "idle",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Küche",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 21.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    },
+    "schlafzimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_schlafzimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "zeitplan",
+     "hvac_action": "heating",
+     "ist": 17.2,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Schlafzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 17.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 17.0
+    },
+    "wohnzimmer": {
+     "anzeige": "Zeitplan",
+     "boost_bis": null,
+     "climate": "climate.pm_wohnzimmer",
+     "fenster_offen": false,
+     "feuchte": 44.5,
+     "grund": "zeitplan",
+     "hvac_action": "heating",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Wohnzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 21.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    }
+   }
+  },
+  "POST /api/heizperiode": {
+   "antwort": {
+    "abweichung": null,
+    "aktiv": null,
+    "aussen_aktuell": 8.30670225611256,
+    "entitaet": "input_boolean.pm_heizperiode",
+    "entscheidung": {
+     "aktiv": true,
+     "grund": "Manuell auf Heizperiode gestellt. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt."
+    },
+    "heizgrenze": 13.0,
+    "hysterese": 2.0,
+    "letzte_aenderung": null,
+    "modus": "heizperiode",
+    "naechste_pruefung": null,
+    "tage_ende": 3,
+    "tage_start": 2,
+    "tagesmittel": [
+     {
+      "datum": "2026-01-07",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-08",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-09",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-10",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-11",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-12",
+      "mittel": 8.0
+     },
+     {
+      "datum": "2026-01-13",
+      "mittel": 8.0
+     }
+    ],
+    "verknuepft": null,
+    "vorhanden": false,
+    "zustand": null
+   },
+   "status": 200
+  },
+  "POST /api/steuerung/kuche": {
+   "antwort": {
+    "ok": true,
+    "raum": {
+     "anzeige": "Zeitweise 21.5 °C",
+     "boost_bis": null,
+     "climate": "climate.pm_kuche",
+     "fenster_offen": false,
+     "feuchte": 48.6,
+     "grund": "overlay",
+     "hvac_action": "idle",
+     "ist": 20.9,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Küche",
+     "overlay_bis": "2026-01-14T20:17:00+00:00",
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 21.5,
+     "steuerbar": true,
+     "zeitplan_temperatur": 21.0
+    }
+   },
+   "status": 200
+  },
+  "POST /api/steuerung/schlafzimmer": {
+   "antwort": {
+    "ok": true,
+    "raum": {
+     "anzeige": "Zeitplan",
+     "boost_bis": "2026-01-14T19:47:00+00:00",
+     "climate": "climate.pm_schlafzimmer",
+     "fenster_offen": false,
+     "feuchte": 46.6,
+     "grund": "boost",
+     "hvac_action": "heating",
+     "ist": 17.2,
+     "max_temp": 25.0,
+     "min_temp": 5.0,
+     "modus": "auto",
+     "naechster_wechsel": null,
+     "naechster_wechsel_grund": null,
+     "name": "Schlafzimmer",
+     "overlay_bis": null,
+     "preset": "zeitplan",
+     "schritt": 0.5,
+     "soll": 25.0,
+     "steuerbar": true,
+     "zeitplan_temperatur": 17.0
+    }
+   },
+   "status": 200
+  },
+  "dienste": [
+   [
+    "weather",
+    "get_forecasts",
+    {
+     "entity_id": "weather.dwd_zuhause",
+     "type": "daily"
+    }
+   ],
+   [
+    "pm_heizung",
+    "set_overlay",
+    {
+     "dauer": 60,
+     "entity_id": "climate.pm_kuche",
+     "temperatur": 21.5
+    }
+   ],
+   [
+    "pm_heizung",
+    "boost",
+    {
+     "dauer": 30,
+     "entity_id": "climate.pm_schlafzimmer"
+    }
+   ]
+  ],
+  "ki_prompt": "Sie sind der Klima-Coach für ein Zuhause mit der Heizungsintegration PM Klima.\nPM Klima steuert die Heizkörperthermostate raumweise nach Heizplänen (Zeitplänen), mit Fensterabschaltung,\nzeitweisen Temperaturen (Overlay), Boost und einer Sperre außerhalb der Heizperiode.\n\nAufgabe: Geben Sie konkrete, datengestützte Tipps zum Heizen, Lüften und Energiesparen für dieses Zuhause.\nRegeln:\n- Schreiben Sie auf Deutsch in der Sie-Form, ruhig und sachlich, ohne Ausrufezeichen und ohne Emoji.\n- Stützen Sie jeden Tipp auf Werte aus dem Lagebericht und nennen Sie diese Werte in der Begründung.\n- Erfinden Sie nichts, was nicht in den Daten steht. Fehlende Werte (null) bedeuten: unbekannt.\n- Die lokalen Tipps (Feld lokale_tipps) kennt der Nutzer bereits. Berücksichtigen Sie sie, wiederholen Sie sie nicht.\n- Höchstens 8 Tipps, nach Wichtigkeit sortiert. Priorität 1 = dringend, 2 = empfehlenswert, 3 = Hinweis.\n- raum ist das Kürzel aus dem Lagebericht (Feld raeume[].raum) oder null für das ganze Zuhause.\n- massnahme ist optional: typ heizplan (Heizplan des Raums anpassen), steuerung (Raumsteuerung, optional\n  temperatur in °C und dauer in Minuten), lueften oder info. Maßnahmen werden nur vorgeschlagen, nie automatisch ausgeführt.\n\nAntworten Sie ausschließlich mit einem JSON-Objekt ohne weiteren Text, genau in dieser Form:\n{\"zusammenfassung\": \"2 bis 4 Sätze zur Gesamtlage\",\n \"tipps\": [{\"titel\": \"kurz\", \"text\": \"Empfehlung\", \"begruendung\": \"warum, mit Werten\", \"prioritaet\": 1,\n            \"raum\": \"kuerzel oder null\", \"massnahme\": {\"typ\": \"info\"}}]}\n\nLagebericht (JSON):\n{\"stand\":\"2026-01-14T20:17+01:00\",\"zeit\":{\"monat\":1,\"stunde\":20,\"wochentag\":2},\"aussen\":{\"temperatur\":8.3,\"feuchte\":79.0,\"tagesmittel_gestern\":8.0},\"wetter\":{\"min_morgen\":3.0,\"max_morgen\":11.0,\"min_3tage\":3.0,\"regen_morgen\":true,\"tage\":[{\"datum\":\"2026-01-14\",\"min\":2.0,\"max\":10.0,\"niederschlag_mm\":0.0,\"niederschlag_wahrscheinlichkeit\":10.0,\"zustand\":\"cloudy\"},{\"datum\":\"2026-01-15\",\"min\":3.0,\"max\":11.0,\"niederschlag_mm\":3.2,\"niederschlag_wahrscheinlichkeit\":80.0,\"zustand\":\"rainy\"},{\"datum\":\"2026-01-16\",\"min\":4.0,\"max\":12.0,\"niederschlag_mm\":0.0,\"niederschlag_wahrscheinlichkeit\":10.0,\"zustand\":\"cloudy\"}]},\"heizperiode\":{\"aktiv\":true,\"modus\":\"heizperiode\",\"heizgrenze\":13.0,\"hysterese\":2.0,\"entscheidung\":\"Manuell auf Heizperiode gestellt. Die Freigabe-Entität input_boolean.pm_heizperiode fehlt.\",\"tagesmittel\":[{\"datum\":\"2026-01-07\",\"mittel\":8.0},{\"datum\":\"2026-01-08\",\"mittel\":8.0},{\"datum\":\"2026-01-09\",\"mittel\":8.0},{\"datum\":\"2026-01-10\",\"mittel\":8.0},{\"datum\":\"2026-01-11\",\"mittel\":8.0},{\"datum\":\"2026-01-12\",\"mittel\":8.0},{\"datum\":\"2026-01-13\",\"mittel\":8.0}]},\"integration\":{\"aktiv\":true,\"gesperrt\":false,\"sperre_grund\":null,\"sperre_wirkung\":\"aus\"},\"raeume\":[{\"raum\":\"badezimmer\",\"name\":\"Badezimmer\",\"aktuell\":{\"nassraum\":true,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"zeitplan\",\"hvac_action\":\"heating\",\"ist\":22.0,\"soll\":22.0,\"zeitplan_temperatur\":22.0,\"feuchte\":46.6,\"schimmel\":48.6,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":0.0},\"woche\":{\"heizstunden\":33.17,\"feuchte_mittel\":55.3,\"feuchte_max\":82.5,\"feuchte_stunden_70\":9.92,\"feuchte_stunden_80\":1.75,\"schimmel_max\":95.2,\"schimmel_stunden_70\":19.25,\"schimmel_stunden_80\":8.75,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":null,\"fenster_offen_stunden\":null,\"fenster_laengste_min\":null,\"lueftung_bewertung\":null,\"lueftung_anzahl\":null},\"plan\":{\"max_temp\":25.0,\"min_temp\":22.0,\"stunden_woche\":38.0,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"05:00-07:00 25 °C\",\"18:00-22:00 22 °C\"],\"sa,so\":[\"18:00-22:00 22 °C\"]}},{\"raum\":\"kuche\",\"name\":\"Küche\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"overlay\",\"hvac_action\":\"idle\",\"ist\":20.9,\"soll\":21.5,\"zeitplan_temperatur\":21.0,\"feuchte\":48.6,\"schimmel\":51.2,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":true,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":0.6},\"woche\":{\"heizstunden\":34.58,\"feuchte_mittel\":52.4,\"feuchte_max\":60.8,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":67.0,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":7,\"fenster_offen_stunden\":2.33,\"fenster_laengste_min\":20,\"lueftung_bewertung\":\"wirksam\",\"lueftung_anzahl\":7},\"plan\":{\"max_temp\":21.0,\"min_temp\":21.0,\"stunden_woche\":70.5,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"06:00-08:30 21 °C\",\"16:00-22:00 21 °C\"],\"sa,so\":[\"08:00-22:00 21 °C\"]}},{\"raum\":\"schlafzimmer\",\"name\":\"Schlafzimmer\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":true,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"boost\",\"hvac_action\":\"heating\",\"ist\":17.2,\"soll\":25.0,\"zeitplan_temperatur\":17.0,\"feuchte\":46.6,\"schimmel\":48.6,\"co2\":null,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":true,\"soll_ist_abstand\":7.8},\"woche\":{\"heizstunden\":34.12,\"feuchte_mittel\":52.1,\"feuchte_max\":57.5,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":62.8,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":null,\"co2_stunden_1000\":null,\"co2_stunden_1400\":null,\"fenster_anzahl\":null,\"fenster_offen_stunden\":null,\"fenster_laengste_min\":null,\"lueftung_bewertung\":null,\"lueftung_anzahl\":null},\"plan\":{\"max_temp\":20.0,\"min_temp\":20.0,\"stunden_woche\":24.5,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr,sa,so\":[\"06:00-07:30 20 °C\",\"21:00-23:00 20 °C\"]}},{\"raum\":\"wohnzimmer\",\"name\":\"Wohnzimmer\",\"aktuell\":{\"nassraum\":false,\"schlafraum\":false,\"modus\":\"auto\",\"preset\":\"zeitplan\",\"grund\":\"zeitplan\",\"hvac_action\":\"heating\",\"ist\":20.9,\"soll\":21.0,\"zeitplan_temperatur\":21.0,\"feuchte\":44.5,\"schimmel\":45.9,\"co2\":902.0,\"luftqualitaet\":\"gut\",\"fenster_offen\":false,\"lueften_empfohlen\":false,\"overlay_aktiv\":false,\"overlay_dauerhaft\":false,\"boost_aktiv\":false,\"soll_ist_abstand\":0.1},\"woche\":{\"heizstunden\":36.62,\"feuchte_mittel\":50.9,\"feuchte_max\":57.6,\"feuchte_stunden_70\":0.0,\"feuchte_stunden_80\":0.0,\"schimmel_max\":62.9,\"schimmel_stunden_70\":0.0,\"schimmel_stunden_80\":0.0,\"co2_max\":1750.0,\"co2_stunden_1000\":84.42,\"co2_stunden_1400\":37.58,\"fenster_anzahl\":15,\"fenster_offen_stunden\":4.5,\"fenster_laengste_min\":95,\"lueftung_bewertung\":\"mäßig\",\"lueftung_anzahl\":15},\"plan\":{\"max_temp\":21.0,\"min_temp\":21.0,\"stunden_woche\":75.0,\"nacht\":false,\"leer\":false,\"tage_ohne_block\":0},\"heizplan\":{\"mo,di,mi,do,fr\":[\"06:00-08:30 21 °C\",\"16:00-22:30 21 °C\"],\"sa,so\":[\"08:00-23:00 21 °C\"]}}],\"lokale_tipps\":[{\"titel\":\"Bad prüfen\",\"raum\":\"badezimmer\",\"prioritaet\":1},{\"titel\":\"Feuchte Badezimmer\",\"raum\":\"badezimmer\",\"prioritaet\":2},{\"titel\":\"Feuchte Küche\",\"raum\":\"kuche\",\"prioritaet\":2},{\"titel\":\"Feuchte Schlafzimmer\",\"raum\":\"schlafzimmer\",\"prioritaet\":2},{\"titel\":\"Feuchte Wohnzimmer\",\"raum\":\"wohnzimmer\",\"prioritaet\":2},{\"titel\":\"Heizperiode\",\"raum\":null,\"prioritaet\":3}],\"empfehlungen_integration\":[\"Wohnzimmer: Wandfeuchte erhöht (76 %)\",\"Badezimmer: Lüften empfohlen, etwa 10 Minuten\"],\"anwesenheit\":{\"jemand_zuhause\":true,\"anzahl_zuhause\":1},\"personen\":[{\"name\":\"Dominik\",\"zuhause\":\"ja\"},{\"name\":\"Gina Perina\",\"zuhause\":\"nein\"}]}"
+ }
+}

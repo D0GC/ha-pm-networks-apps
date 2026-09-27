@@ -1,4 +1,22 @@
 configuration:
+  betriebsart:
+    name: Operating mode
+    description: >-
+      pm_networks if the PM Klima integration is installed (default). generisch for any thermostats
+      (climate entities) without PM Klima; rooms are then taken from the Home Assistant areas.
+  plan_anwenden:
+    name: Apply heating schedule
+    description: >-
+      Operating mode generisch only. Klima Studio sets the thermostats according to the schedules (default on).
+  sommer_aktion:
+    name: Summer behaviour
+    description: >-
+      Operating mode generisch only. plan_pausieren_und_aus pauses the schedules and turns rooms in plan
+      mode off (default), plan_pausieren only pauses the schedules.
+  absenktemperatur:
+    name: Setback temperature
+    description: >-
+      Operating mode generisch only. Target temperature outside the schedule blocks in °C (default 17).
   bericht_tag:
     name: Report day
     description: Weekday on which the weekly report is created (German day names).
