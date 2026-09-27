@@ -32,6 +32,10 @@
   const tz = () => (S.info && S.info.zeitzone) || "Europe/Berlin";
   const fmtDate = (ms, withTime = true) => new Intl.DateTimeFormat("de-DE", Object.assign({ weekday: "short", day: "2-digit", month: "2-digit", timeZone: tz() }, withTime ? { hour: "2-digit", minute: "2-digit" } : {})).format(new Date(ms));
   const clone = o => JSON.parse(JSON.stringify(o));
+  // Betriebsart: generisch (ohne PM Klima) oder pm_networks (Standard, auch bei älteren Servern ohne Feld)
+  const generisch = () => !!(S.info && S.info.betriebsart === "generisch");
+  // Fähigkeit laut /api/info; fehlt die Angabe (älterer Server), gilt das bisherige Verhalten
+  const kann = k => { const f = S.info && S.info.faehigkeiten; return !f || typeof f[k] !== "boolean" ? true : f[k]; };
 
   // ------------------------------------------------------------------ API
   async function api(path, opts = {}) {
@@ -158,22 +162,53 @@
   }
   const lvl = (v, warn, bad) => v == null ? "" : v >= bad ? "bad" : v >= warn ? "warn" : "ok";
 
+  // Betriebsart generisch: App-Modus (plan | hand | aus) aus /api/steuerung, Thermostat-Modus klein
+  const APP_MODUS = { plan: { cls: "auto", text: "Plan" }, hand: { cls: "heat", text: "Hand" }, aus: { cls: "off", text: "Aus" } };
+  const HVAC_TEXT = { heat: "Heizen", off: "Aus", auto: "Auto", heat_cool: "Heizen/Kühlen", cool: "Kühlen", dry: "Entfeuchten", fan_only: "Lüfter", unavailable: "nicht verfügbar", unknown: "unbekannt" };
+  const hvacText = m => m == null ? "–" : HVAC_TEXT[m] || String(m);
+  function modeInfoGen(z, cur) {
+    if ((z || cur || {}).hvac_action === "heating") return { cls: "heizt", text: "heizt" };
+    if (z && z.steuerbar === false) return { cls: "off", text: "nur Anzeige" };
+    if (z && APP_MODUS[z.modus]) return APP_MODUS[z.modus];
+    return { cls: "off", text: cur && cur.modus ? hvacText(cur.modus) : "unbekannt" };
+  }
+  function statusLineGen(z, cur, slug) {
+    if (!z) return cur && cur.modus ? `Thermostat ${hvacText(cur.modus)}` : "";
+    const p = [];
+    if (z.steuerbar === false) return `nicht steuerbar · Thermostat ${hvacText(z.hvac_modus)}`;
+    const info = rooms().find(x => x.raum === slug);
+    if (z.boost_bis) p.push("Boost");
+    else if (z.overlay_bis) p.push("Abweichung vom Plan");
+    else if (z.modus === "plan" && info && !info.schedule) p.push("kein Heizplan");
+    else if (z.modus === "plan") p.push(z.sommer_pause ? "Sommer, Plan pausiert" : z.plan_anwendung === false ? "Plananwendung abgeschaltet" : "folgt dem Heizplan");
+    else if (z.modus === "hand") p.push("Handbetrieb");
+    else if (z.modus === "aus") p.push("ausgeschaltet");
+    if (z.modus === "plan" && z.plan_soll != null) p.push(`Plan-Soll ${num(z.plan_soll)} °C`);
+    p.push(`Thermostat ${hvacText(z.hvac_modus)}`);
+    return p.join(" · ");
+  }
+  const sollText = r => r.soll != null ? num(r.soll) + " °C" : r.soll_bereich ? `${num(r.soll_bereich.min)}–${num(r.soll_bereich.max)} °C` : "–";
+
   async function renderOverview(main) {
     main.innerHTML = `<div class="bar"><h2 class="grow">Übersicht</h2>${rangeChips()}</div><div class="loading">Auswertung läuft …</div>`;
     bindRangeChips(main);
-    const [cur, ov] = await Promise.all([api("aktuell"), api("uebersicht?bereich=" + S.bereich)]);
+    const gen = generisch();
+    const [cur, ov, ctl] = await Promise.all([api("aktuell"), api("uebersicht?bereich=" + S.bereich),
+      gen ? api("steuerung").catch(() => null) : null]);
     if (stale(main)) return;
     const c = cur.data, o = ov.data;
+    const zustand = (ctl && ctl.data && ctl.data.raeume) || {};
     const recos = (c.empfehlungen || []).map(e => `<li>${esc(e.text)}</li>`).join("") ||
       `<li class="muted">Derzeit liegen keine Empfehlungen vor.</li>`;
     const tiles = o.raeume.map(a => {
       const r = c.raeume[a.raum] || {};
-      const m = modeInfo(r);
+      const z = zustand[a.raum];
+      const m = gen ? modeInfoGen(z, r) : modeInfo(r);
       const f = a.feuchte || {}, s = a.schimmel || {}, co = a.co2 || {}, w = a.fenster || {};
       return `<article class="card glass">
         <div class="room-head"><h3>${esc(a.name)}</h3><span class="mode ${esc(m.cls)}">${esc(m.text)}</span></div>
-        <div class="temps"><span class="ist">${num(r.ist)} °C</span><span class="soll">Soll ${r.soll == null ? "–" : num(r.soll) + " °C"}</span></div>
-        <div class="grund">${esc(statusLine(r))}</div>
+        <div class="temps"><span class="ist">${num(r.ist)} °C</span><span class="soll">Soll ${gen ? sollText(r) : r.soll == null ? "–" : num(r.soll) + " °C"}</span></div>
+        <div class="grund">${esc(gen ? statusLineGen(z, r, a.raum) : statusLine(r))}</div>
         <div class="metrics">
           <div class="metric"><div class="lbl">Heizzeit</div><div class="val">${a.heizstunden == null ? "–" : num(a.heizstunden) + " h"}</div><div class="sub">${RANGE_LABEL[S.bereich]}</div></div>
           <div class="metric ${lvl(r.feuchte, 60, 70)}"><div class="lbl">Feuchte</div><div class="val">${r.feuchte == null ? "–" : num(r.feuchte, 0) + " %"}</div><div class="sub">${f.stunden_70 ? num(f.stunden_70) + " h über 70 %" : "max " + num(f.max, 0) + " %"}</div></div>
@@ -185,7 +220,7 @@
     }).join("");
     main.innerHTML = `<div class="bar"><h2 class="grow">Übersicht</h2>${rangeChips()}</div>
       <div class="hero">
-        <section class="card glass"><div class="kicker">Empfehlungen der Integration</div><ul class="reco">${recos}</ul></section>
+        ${kann("empfehlungen_integration") ? `<section class="card glass"><div class="kicker">Empfehlungen der Integration</div><ul class="reco">${recos}</ul></section>` : betriebHtml(zustand)}
         <section class="card glass"><div class="kicker">Außen</div>
           <div class="temps"><span class="ist">${num(c.aussen.temperatur)} °C</span><span class="soll">${num(c.aussen.feuchte, 0)} % rF</span></div>
           <div class="grund">Nächster Wochenbericht: ${S.info.bericht.naechster ? fmtDate(Date.parse(S.info.bericht.naechster)) : "–"}</div>
@@ -193,6 +228,20 @@
       </div>
       <div class="grid-tiles">${tiles || '<div class="empty">Keine Räume erkannt.</div>'}</div>`;
     bindRangeChips(main);
+  }
+
+  // Generisch: statt der Empfehlungen der Integration eine Zusammenfassung des Betriebs
+  function betriebHtml(zustand) {
+    const liste = Object.values(zustand);
+    const anzahl = k => liste.filter(z => z.modus === k).length;
+    const hand = liste.filter(z => z.modus === "hand").map(z => z.name);
+    const pause = liste.some(z => z.sommer_pause);
+    const plan = !kann("plan_anwendung") ? "Die Plananwendung ist abgeschaltet (App-Konfiguration). Klima Studio schreibt keine Plantemperaturen."
+      : pause ? "Sommerbetrieb: Die Plananwendung ist pausiert." : "Klima Studio wendet die Heizpläne der Räume im Modus Plan an.";
+    return `<section class="card glass"><div class="kicker">Betrieb</div>
+      <p class="m0">${esc(plan)}</p>
+      ${liste.length ? `<p class="small muted">Plan ${anzahl("plan")} · Hand ${anzahl("hand")} · Aus ${anzahl("aus")}${hand.length ? ` · im Modus Hand: ${esc(hand.join(", "))}` : ""}</p>` : ""}
+    </section>`;
   }
 
   // ------------------------------------------------------------------ Heizplan
@@ -450,7 +499,7 @@
     const legend = `<div class="legend"><span>15 °C</span><span class="scale" style="background:linear-gradient(90deg,#B885D6,#E8875A)"></span><span>23 °C</span></div>`;
     const help = `<div class="help"><b>Maus:</b> auf freier Fläche ziehen legt einen Block an. <b>Touch:</b> freie Fläche antippen. Blöcke lassen sich verschieben, an den Kanten verlängern und antippen zum Bearbeiten. <b>Tagesname</b> öffnet Kopieren und Leeren.</div>`;
     if (!S.sel) {
-      side.innerHTML = `<div class="kicker">${esc(S.plan.name || "")}</div><h3>Block wählen</h3><p class="small muted">Außerhalb der Blöcke gilt die Grundtemperatur der Integration.</p>${legend}${help}`;
+      side.innerHTML = `<div class="kicker">${esc(S.plan.name || "")}</div><h3>Block wählen</h3><p class="small muted">${planHinweis()}</p>${legend}${help}`;
       return;
     }
     const isNew = !!S.sel.neu;
@@ -501,6 +550,12 @@
     }
   }
 
+  function planHinweis() {
+    if (!generisch()) return "Außerhalb der Blöcke gilt die Grundtemperatur der Integration.";
+    if (!kann("plan_anwendung")) return "Die Plananwendung ist abgeschaltet (App-Konfiguration). Der Plan wird gespeichert, aber nicht an die Thermostate übertragen.";
+    return "Die App wendet diesen Plan an, solange der Raum im Modus Plan ist. Außerhalb der Blöcke gilt die Absenktemperatur.";
+  }
+
   function refreshBar(main) {
     const dirty = isDirty();
     $("#btn-save", main).disabled = !dirty; $("#btn-discard", main).disabled = !dirty;
@@ -548,7 +603,7 @@
     const tage = fullDays(p.tage);
     let leer = false;
     if (DAYS.every(d => !tage[d].length)) {
-      leer = await modal("Heizplan vollständig leeren?", `<div class="warnbox">An keinem Tag ist ein Block eingetragen. Nach dem Speichern gilt in ${esc(roomName(p.raum))} dauerhaft die Grundtemperatur der Integration.</div>`,
+      leer = await modal("Heizplan vollständig leeren?", `<div class="warnbox">An keinem Tag ist ein Block eingetragen. Nach dem Speichern gilt in ${esc(roomName(p.raum))} dauerhaft die ${generisch() ? "Absenktemperatur der App" : "Grundtemperatur der Integration"}.</div>`,
         [{ label: "Abbrechen", value: false, cls: "ghost" }, { label: "Leeren bestätigen", value: true, cls: "danger" }]);
       if (!leer) return;
     }
@@ -609,7 +664,7 @@
       <div class="charts">
         <section class="chart-card glass wide"><h3>Soll und Ist</h3>${KSCharts.legend([{ name: "Ist", color: C.cloud }, { name: "Soll", color: C.auto }, { name: "heizt", color: C.heizt, band: true }, ...(w ? [{ name: "Fenster offen", color: C.sky, band: true }] : [])])}<div id="c-temp" class="chart"></div></section>
         <section class="chart-card glass"><h3>Luftfeuchte</h3>${KSCharts.legend([{ name: "Feuchte", color: C.lavender }, { name: "70 %", color: C.warn }, { name: "80 %", color: C.bad }])}<div id="c-hum" class="chart"></div></section>
-        <section class="chart-card glass"><h3>Schimmelrisiko</h3>${KSCharts.legend([{ name: "Risiko", color: C.auto }, { name: "70 %", color: C.warn }, { name: "80 %", color: C.bad }])}<div id="c-mold" class="chart"></div></section>
+        ${!kann("schimmel") && !(s && s.verlauf) ? "" : `<section class="chart-card glass"><h3>Schimmelrisiko</h3>${KSCharts.legend([{ name: "Risiko", color: C.auto }, { name: "70 %", color: C.warn }, { name: "80 %", color: C.bad }])}<div id="c-mold" class="chart"></div></section>`}
         <section class="chart-card glass wide"><h3>CO2</h3>${KSCharts.legend([{ name: "CO2", color: C.lavender }, { name: "1000 ppm", color: C.warn }, { name: "1400 ppm", color: C.bad }])}<div id="c-co2" class="chart"></div></section>
         <section class="chart-card glass wide"><h3>Lüftungen</h3><div id="t-vent"></div></section>
       </div>`;
@@ -625,7 +680,8 @@
       if (f && f.verlauf) KSCharts.render($("#c-hum", main), Object.assign({}, base, { unit: "%", yMin: 30, label: "Luftfeuchte", series: [{ name: "Feuchte", color: C.lavender, data: f.verlauf }],
         thresholds: [{ y: 70, color: C.warn, label: "70 %" }, { y: 80, color: C.bad, label: "80 %" }], bands: winBand }));
       else emptyNote("#c-hum", "Kein Feuchtesensor zugeordnet.");
-      if (s && s.verlauf) KSCharts.render($("#c-mold", main), Object.assign({}, base, { unit: "%", label: "Schimmelrisiko", series: [{ name: "Risiko", color: C.auto, data: s.verlauf }],
+      if (!$("#c-mold", main)) { /* generisch ohne Schimmeldaten: keine Karte */ }
+      else if (s && s.verlauf) KSCharts.render($("#c-mold", main), Object.assign({}, base, { unit: "%", label: "Schimmelrisiko", series: [{ name: "Risiko", color: C.auto, data: s.verlauf }],
         thresholds: [{ y: 70, color: C.warn, label: "70 %" }, { y: 80, color: C.bad, label: "80 %" }] }));
       else emptyNote("#c-mold", "Kein Schimmelrisiko-Sensor.");
       if (co && co.verlauf) KSCharts.render($("#c-co2", main), Object.assign({}, base, { unit: "ppm", digits: 0, label: "CO2", yMin: 400, series: [{ name: "CO2", color: C.lavender, data: co.verlauf }],
@@ -682,12 +738,13 @@
     const { data: r } = await api("berichte/" + encodeURIComponent(id));
     if (stale(main)) return;
     const view = $("#rep-view", main);
+    const mold = kann("schimmel") || r.raeume.some(x => x.schimmel_max != null);
     view.innerHTML = `<div class="kicker">Zeitraum ${esc(new Date(r.zeitraum.start).toLocaleDateString("de-DE", { timeZone: tz() }))} – ${esc(new Date(r.zeitraum.ende).toLocaleDateString("de-DE", { timeZone: tz() }))}</div>
       <p class="intro">${esc(r.einleitung)}</p>
-      <section><h3>Heizstunden</h3><table class="plain"><thead><tr><th>Raum</th><th>Heizzeit</th><th>Feuchte max</th><th>Schimmel max</th><th>CO2 max</th><th>Fenster offen</th></tr></thead><tbody>
-        ${r.raeume.map(x => `<tr><td>${esc(x.name)}</td><td>${x.heizstunden == null ? "–" : num(x.heizstunden) + " h"}</td><td>${num(x.feuchte_max, 0)} %</td><td>${x.schimmel_max == null ? "–" : num(x.schimmel_max, 0) + " %"}</td><td>${x.co2_max == null ? "–" : num(x.co2_max, 0) + " ppm"}</td><td>${x.fenster_offen_stunden == null ? "–" : num(x.fenster_offen_stunden) + " h"}</td></tr>`).join("")}
+      <section><h3>Heizstunden</h3><table class="plain"><thead><tr><th>Raum</th><th>Heizzeit</th><th>Feuchte max</th>${mold ? "<th>Schimmel max</th>" : ""}<th>CO2 max</th><th>Fenster offen</th></tr></thead><tbody>
+        ${r.raeume.map(x => `<tr><td>${esc(x.name)}</td><td>${x.heizstunden == null ? "–" : num(x.heizstunden) + " h"}</td><td>${num(x.feuchte_max, 0)} %</td>${mold ? `<td>${x.schimmel_max == null ? "–" : num(x.schimmel_max, 0) + " %"}</td>` : ""}<td>${x.co2_max == null ? "–" : num(x.co2_max, 0) + " ppm"}</td><td>${x.fenster_offen_stunden == null ? "–" : num(x.fenster_offen_stunden) + " h"}</td></tr>`).join("")}
       </tbody></table></section>
-      <section><h3>Auffällige Räume</h3>${r.auffaellig.length ? `<ul>${r.auffaellig.map(x => `<li>${esc(x.text)}</li>`).join("")}</ul>` : '<p class="muted">Keine. Feuchte, Schimmelrisiko und CO2 blieben im Rahmen.</p>'}</section>
+      <section><h3>Auffällige Räume</h3>${r.auffaellig.length ? `<ul>${r.auffaellig.map(x => `<li>${esc(x.text)}</li>`).join("")}</ul>` : '<p class="muted">Keine. ${mold ? "Feuchte, Schimmelrisiko und CO2" : "Feuchte und CO2"} blieben im Rahmen.</p>'}</section>
       <section><h3>Längste offene Fenster</h3>${r.fenster_laengste.length ? `<ul>${r.fenster_laengste.map(x => `<li>${esc(x.name)}: ${num(x.dauer_min, 0)} min ab ${fmtDate(x.start)}</li>`).join("")}</ul>` : '<p class="muted">Keine Öffnungen erfasst.</p>'}</section>
       <section><h3>Empfehlungen</h3><ul>${r.empfehlungen.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>
       <p class="muted">${esc(r.schluss)}</p>
@@ -697,9 +754,19 @@
   // ------------------------------------------------------------------ Erweiterungen (steuerung.js, coach.js)
   // Zusätzliche Reiter registrieren sich in window.KSTabs = {name: {render(main, parts), leave()}}.
   const EXT = window.KSTabs = window.KSTabs || {};
-  window.KSApp = { S, $, esc, num, fmtDate, tz, api, toast, modal, rooms, roomName, prefill: null };
+  window.KSApp = { S, $, esc, num, fmtDate, tz, api, toast, modal, rooms, roomName, generisch, kann, hvacText, prefill: null };
 
   // ------------------------------------------------------------------ Start
+  // Hinweis zur Betriebsart (z. B. PM Klima fehlt); ausblendbar bis zum Neuladen, nie automatisch umschalten
+  function hinweisBetriebsart() {
+    const box = $("#hinweis-betriebsart");
+    const text = S.info && S.info.hinweis_betriebsart;
+    if (!box || !text) return;
+    box.innerHTML = `<div class="infobox"><p>${esc(text)}</p><button type="button" class="linkbtn" id="hinweis-zu">Ausblenden</button></div>`;
+    box.hidden = false;
+    $("#hinweis-zu", box).addEventListener("click", () => { box.hidden = true; });
+  }
+
   async function boot() {
     try {
       S.info = (await api("info")).data;
@@ -707,6 +774,7 @@
       $("#main").innerHTML = `<div class="errbox">Verbindung zu Home Assistant fehlgeschlagen: ${esc(e.message)}</div>`;
       return;
     }
+    hinweisBetriebsart();
     window.addEventListener("hashchange", route);
     window.addEventListener("beforeunload", e => { if (isDirty()) { e.preventDefault(); e.returnValue = ""; } });
     route();

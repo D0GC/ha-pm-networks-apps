@@ -61,6 +61,11 @@ h3 { font-size: .95rem; }
 .tabs a.active { background: rgba(184, 133, 214, .18); border-color: rgba(184, 133, 214, .45); color: var(--cloud); }
 
 main { max-width: 1320px; margin: 0 auto; padding: 20px 24px 40px; }
+.hinweis-top { max-width: 1320px; margin: 14px auto 0; padding: 0 24px; }
+.hinweis-top .infobox { display: flex; align-items: flex-start; gap: 10px; margin: 0; font-size: .85rem; }
+.hinweis-top .infobox p { flex: 1; min-width: 0; margin: 0; }
+.hinweis-top:not([hidden]) + main { padding-top: 12px; }
+.hvac { color: var(--muted); font-size: .75rem; }
 .loading, .empty { padding: 40px; text-align: center; color: var(--muted); }
 .foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; padding: 18px; color: var(--muted); font-size: .75rem; }
 .foot-logo { height: 26px; opacity: .8; }
@@ -310,6 +315,7 @@ pre.json { background: rgba(15, 12, 42, .6); border: 1px solid var(--line); bord
   .tabs { margin-left: 0; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; overflow: visible; }
   .tabs a { text-align: center; padding: 6px 4px; font-size: .8rem; }
   main { padding: 14px 10px 30px; }
+  .hinweis-top { padding: 0 10px; margin-top: 10px; }
   .week { padding: 8px 6px 10px 0; }
   .week-head { top: 134px; }
   .week-head, .week-body { grid-template-columns: 30px repeat(7, minmax(0, 1fr)); }

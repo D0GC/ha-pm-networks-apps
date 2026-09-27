@@ -45,9 +45,9 @@
         <p class="small muted">Lokal ausgewertet aus den Daten Ihres Zuhauses. Es werden keine Daten übertragen.</p>
         <div class="tip-list" id="co-tipps">${tipps.length ? tipps.map(t => tippHtml(t, true)).join("")
           : '<div class="empty glass card">Derzeit liegen keine Hinweise vor.</div>'}</div></section>
-      <section class="co-sec"><h3 class="sec-title">Hinweise der Integration</h3>
+      ${A().kann("empfehlungen_integration") ? `<section class="co-sec"><h3 class="sec-title">Hinweise der Integration</h3>
         <div class="card glass">${integ.length ? `<ul class="reco">${integ.map(integHtml).join("")}</ul>`
-          : '<p class="muted m0">Die Integration meldet derzeit keine Empfehlungen.</p>'}</div></section>
+          : '<p class="muted m0">Die Integration meldet derzeit keine Empfehlungen.</p>'}</div></section>` : ""}
       <section class="co-sec"><h3 class="sec-title">KI-Coach</h3>
         <div class="card glass ki-card">
           <p class="m0">Auf Wunsch wertet ein KI-Dienst den aktuellen Lagebericht aus und ergänzt die lokalen Hinweise. Vorschläge werden nie automatisch ausgeführt.</p>
@@ -88,7 +88,8 @@
       </div></article>`;
   }
 
-  const MODUS = { auto: "Auto", heat: "Hand", off: "Aus" };
+  // pm_networks: auto/heat/off; generisch: plan/hand/aus (App-Modus)
+  const MODUS = { auto: "Auto", heat: "Hand", off: "Aus", plan: "Plan", hand: "Hand", aus: "Aus" };
 
   function massnahmeText(m) {
     if (!m || m.typ !== "steuerung") return "";
