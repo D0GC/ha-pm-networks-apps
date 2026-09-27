@@ -30,7 +30,8 @@ configuration:
     name: Room overrides
     description: >-
       Optional. Each entry needs "raum" (slug such as wohnzimmer) and may set name, climate, schedule,
-      feuchte, schimmel, luftqualitaet, lueften, fenster, co2 or ausblenden: true.
+      feuchte, schimmel, luftqualitaet, lueften, fenster, co2, absenk (setback temperature of the room in °C,
+      operating mode generisch only) or ausblenden: true.
   praefix_klima:
     name: Thermostat prefix
     description: Prefix for automatic room discovery (default climate.pm_).
@@ -49,7 +50,7 @@ configuration:
   heizperiode_entitaet:
     name: Heating season switch
     description: >-
-      Switch the app sets for heating season (on) and summer (off). It must be configured as release entity in the PM Klima integration. Default input_boolean.pm_heizperiode.
+      Switch the app sets for heating season (on) and summer (off). It must be configured as release entity in the PM Klima integration. Default input_boolean.pm_heizperiode. Optional in operating mode generisch: if the entity exists, Klima Studio only mirrors the heating season to it (e.g. for your own automations).
   coach_ki_entitaet:
     name: AI service for the climate coach
     description: >-

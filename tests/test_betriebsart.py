@@ -79,11 +79,12 @@ def test_fabrik_waehlt_adapter():
     assert isinstance(gen, GenerischAdapter)
     assert gen.betriebsart == "generisch"
     assert gen.braucht_registries is True
-    assert gen.heizperiode_wirksam is False
+    assert gen.heizperiode_wirksam is True  # ab 1.2.0 Phase 3: interne Heizperiode
     assert tuple(pm.faehigkeiten()) == FAEHIGKEITEN
     assert tuple(gen.faehigkeiten()) == FAEHIGKEITEN
     assert pm.faehigkeiten()["freigabe"] is True
-    assert not any(gen.faehigkeiten().values())
+    # ab 1.2.0 Phase 3 nur plan_anwendung (Option plan_anwenden, Standard an)
+    assert [k for k, v in gen.faehigkeiten().items() if v] == ["plan_anwendung"]
 
 
 def test_studio_nutzt_adapter_der_betriebsart(studio, studio_generisch):
@@ -192,7 +193,8 @@ async def test_info_generisch(app_client_generisch):
     assert info["pm_klima_geladen"] is False
     assert info["hinweis_betriebsart"] is None
     assert set(info["faehigkeiten"]) == set(FAEHIGKEITEN)
-    assert not any(info["faehigkeiten"].values())
+    # ab 1.2.0 Phase 3 nur plan_anwendung (Option plan_anwenden, Standard an)
+    assert [k for k, v in info["faehigkeiten"].items() if v] == ["plan_anwendung"]
     assert [r["raum"] for r in info["raeume"]] == ["badezimmer", "gaestezimmer_heizung", "kuche", "schlafzimmer", "wohnzimmer"]
 
 

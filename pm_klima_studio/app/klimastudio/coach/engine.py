@@ -16,6 +16,13 @@ Semantik der Bedingungen (dreiwertige Daten, zweiwertige Logik):
   Zahlen nur mit Zahlen (Toleranz 1e-9), Texte nur mit Texten. Bei vorhandenem
   Wert und Typ-Ungleichheit ist ``==`` falsch und ``!=`` wahr.
 * ``<``, ``<=``, ``>``, ``>=`` sind nur für zwei Zahlen wahr, sonst falsch.
+
+Betriebsart (ab 1.2.0): Das optionale Regelfeld ``betriebsart`` (``pm_networks`` oder
+``generisch``) beschränkt eine Regel auf diese Betriebsart; ohne das Feld gilt sie in beiden.
+Maßgeblich ist ``app.betriebsart`` im globalen Kontext (fehlt der Wert: ``pm_networks``).
+Im Modus generisch gelten Regeln nur, wenn Klima Studio die Heizpläne anwendet
+(``app.plan_anwendung``), sofern sie ``"plananwendung": true`` tragen oder Pfade unter
+``raum.plan.`` verwenden. Im Modus pm_networks hat ``plananwendung`` keine Wirkung.
 """
 
 from __future__ import annotations
@@ -37,6 +44,11 @@ THEMEN = ("heizen", "lueften", "feuchte", "co2", "heizplan", "energie", "wartung
 SAISONS = ("heizperiode", "sommer", "immer")
 MASSNAHMEN = ("heizplan", "steuerung", "lueften", "info")
 STEUER_AKTIONEN = ("overlay", "temperatur", "boost", "zurueck", "modus")
+BETRIEBSARTEN = ("pm_networks", "generisch")
+STANDARD_BETRIEBSART = "pm_networks"
+# Zulässige Werte für massnahme.modus je Betriebsart (Regeln ohne Betriebsart: wie pm_networks)
+MODI = {"pm_networks": ("auto", "heat", "off"), "generisch": ("plan", "hand", "aus")}
+PLAN_PRAEFIX = "raum.plan."
 VERGLEICHE = ("<", "<=", ">", ">=", "==", "!=")
 OPERATOREN = (*VERGLEICHE, "in", "vorhanden", "fehlt")
 HEIZMONATE = (10, 11, 12, 1, 2, 3, 4)
@@ -208,7 +220,7 @@ def pruefe_bedingung(b: Any, tiefe: int = 0) -> None:
         raise RegelFehler(f"unbekannte Felder {sorted(extra)}")
 
 
-def _pruefe_massnahme(m: Any) -> dict[str, Any] | None:
+def _pruefe_massnahme(m: Any, betriebsart: str | None = None) -> dict[str, Any] | None:
     if m is None:
         return None
     if not isinstance(m, dict) or m.get("typ") not in MASSNAHMEN:
@@ -229,7 +241,7 @@ def _pruefe_massnahme(m: Any) -> dict[str, Any] | None:
             raise RegelFehler("massnahme.aktion ungültig")
         out["aktion"] = m["aktion"]
     if "modus" in m:
-        if m["modus"] not in ("auto", "heat", "off"):
+        if m["modus"] not in MODI[betriebsart or STANDARD_BETRIEBSART]:
             raise RegelFehler("massnahme.modus ungültig")
         out["modus"] = m["modus"]
     return out
@@ -268,7 +280,15 @@ def pruefe_regel(r: Any) -> dict[str, Any]:
         or not all(isinstance(m, int) and not isinstance(m, bool) and 1 <= m <= 12 for m in monate)
     ):
         raise RegelFehler("monate muss eine Liste von 1 bis 12 sein")
+    betriebsart = r.get("betriebsart")
+    if betriebsart is not None and betriebsart not in BETRIEBSARTEN:
+        raise RegelFehler("betriebsart muss pm_networks oder generisch sein")
+    plananwendung = r.get("plananwendung", False)
+    if not isinstance(plananwendung, bool):
+        raise RegelFehler("plananwendung muss ein Wahrheitswert sein")
     pruefe_bedingung(r.get("wenn"))
+    if any(p.startswith(PLAN_PRAEFIX) for p in bedingung_pfade(r["wenn"])):
+        plananwendung = True
     return {
         "id": rid,
         "bereich": r["bereich"],
@@ -280,8 +300,20 @@ def pruefe_regel(r: Any) -> dict[str, Any]:
         "titel": _text(r, "titel"),
         "text": _text(r, "text"),
         "begruendung": _text(r, "begruendung", pflicht=False),
-        "massnahme": _pruefe_massnahme(r.get("massnahme")),
+        "massnahme": _pruefe_massnahme(r.get("massnahme"), betriebsart),
+        "betriebsart": betriebsart,
+        "plananwendung": plananwendung,
     }
+
+
+def bedingung_pfade(b: dict[str, Any]) -> set[str]:
+    """Alle Pfade (``wert`` und ``pfad``) einer validierten Bedingung."""
+    for key in ("alle", "eine"):
+        if key in b:
+            return set().union(*(bedingung_pfade(x) for x in b[key]))
+    if "nicht" in b:
+        return bedingung_pfade(b["nicht"])
+    return {b["wert"], *([b["pfad"]] if "pfad" in b else [])}
 
 
 # ------------------------------------------------------------------ Regelwerk
@@ -337,6 +369,19 @@ def saison_aktiv(ctx: dict[str, Any]) -> bool:
     return wert(ctx, "zeit.monat") in HEIZMONATE
 
 
+def betriebsart_aus(ctx: dict[str, Any]) -> tuple[str, bool]:
+    """(Betriebsart, Plananwendung) aus ``app.*`` im Kontext; ohne Angabe pm_networks."""
+    art = wert(ctx, "app.betriebsart")
+    return (art if art in BETRIEBSARTEN else STANDARD_BETRIEBSART), wert(ctx, "app.plan_anwendung") is True
+
+
+def regel_gilt(regel: dict[str, Any], betriebsart: str, plan_anwendung: bool) -> bool:
+    """Gilt die (validierte) Regel in dieser Betriebsart?"""
+    if regel["betriebsart"] is not None and regel["betriebsart"] != betriebsart:
+        return False
+    return not (betriebsart == "generisch" and regel["plananwendung"] and not plan_anwendung)
+
+
 def _regel_passt_zeit(regel: dict[str, Any], ctx: dict[str, Any], heizperiode: bool) -> bool:
     if regel["saison"] == "heizperiode" and not heizperiode:
         return False
@@ -375,8 +420,11 @@ def auswerten(
     """
     ausgeblendet = ausgeblendet or set()
     heiz = saison_aktiv(global_ctx)
+    betriebsart, plan_anwendung = betriebsart_aus(global_ctx)
     tipps: list[dict[str, Any]] = []
     for regel in werk.regeln:
+        if not regel_gilt(regel, betriebsart, plan_anwendung):
+            continue
         if not _regel_passt_zeit(regel, global_ctx, heiz):
             continue
         kontexte = [global_ctx] if regel["bereich"] == "global" else raum_ctx

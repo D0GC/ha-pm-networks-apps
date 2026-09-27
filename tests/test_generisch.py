@@ -1,19 +1,19 @@
-"""Betriebsart generisch (Gerüst): Fake-HA, Raumerkennung per Bereich, Raumzustand, Aktionen -> 409."""
+"""Betriebsart generisch: Fake-HA, Raumerkennung per Bereich, Raumzustand.
+
+Aktionen, Plananwendung und Heizperiode generisch: test_generisch_steuern.py.
+"""
 
 from __future__ import annotations
 
 import logging
 
 import pytest
-from aiohttp import web
 
 from fake_ha import FakeHA
 from klimastudio.adapter.generisch import GenerischAdapter
 from klimastudio.coach import ki
 from klimastudio.config import Options
 from klimastudio.ha_client import HAError
-
-NICHT_VERFUEGBAR = {"fehler": "Im Modus Generisch noch nicht verfügbar.", "code": "nicht_verfuegbar"}
 
 
 def _registries(fake: FakeHA) -> dict:
@@ -243,7 +243,9 @@ async def test_pm_modus_liest_keine_registries(studio, fake):
 
 def test_zustand_steuerbar():
     z = _zustand(FakeHA(pm_klima=False), "wohnzimmer")
-    assert z["modus"] == "heat"
+    # ab Phase 3: modus = App-Modus (plan|hand|aus), Zustand des Thermostats in hvac_modus
+    assert z["modus"] == "plan"
+    assert z["hvac_modus"] == "heat"
     assert z["soll"] == 21.0
     assert z["ist"] == 20.4
     assert (z["min_temp"], z["max_temp"], z["schritt"]) == (7.0, 30.0, 0.5)
@@ -276,7 +278,7 @@ def test_zustand_bereichs_thermostat_nicht_steuerbar():
 
 def test_zustand_nicht_verfuegbar():
     z = _zustand(FakeHA(pm_klima=False), "schlafzimmer")
-    assert z["modus"] == "unavailable"
+    assert z["hvac_modus"] == "unavailable"  # ab Phase 3: modus = App-Modus
     assert z["steuerbar"] is False
     assert "nicht verfügbar" in z["steuerbar_grund"]
 
@@ -319,47 +321,17 @@ async def test_api_steuerung_generisch(app_client_generisch, fake_generisch):
     assert d["heizperiode"]["verknuepft"] is None
 
 
-# ------------------------------------------------------------------ Aktionen und Heizperiode -> 409
+# ------------------------------------------------------------------ Aktionen und Heizperiode
+# Die 409-Antworten des Gerüsts (Phase 1) entfallen mit Phase 3 bewusst: Aktionen, Rück-Timer,
+# Plananwendung und die interne Heizperiode sind in test_generisch_steuern.py abgedeckt.
 
 
-@pytest.mark.parametrize(
-    "body",
-    [
-        {"aktion": "overlay", "temperatur": 21, "dauer": 60},
-        {"aktion": "temperatur", "temperatur": 21},
-        {"aktion": "boost", "dauer": 30},
-        {"aktion": "zurueck"},
-        {"aktion": "modus", "modus": "heat"},
-    ],
-)
-async def test_aktionen_generisch_409(app_client_generisch, fake_generisch, body):
-    resp = await app_client_generisch.post("/api/steuerung/wohnzimmer", json=body)
-    assert resp.status == 409
-    assert await resp.json() == NICHT_VERFUEGBAR
-    assert fake_generisch.service_calls == []
-
-
-async def test_aktion_generisch_direkt_409(studio_generisch):
-    room = await studio_generisch.room("wohnzimmer")
-    with pytest.raises(web.HTTPConflict) as err:
-        await studio_generisch.adapter.aktion(room, {"aktion": "zurueck"})
-    assert err.value.status == 409
-
-
-async def test_heizperiode_generisch(app_client_generisch, studio_generisch, fake_generisch):
-    resp = await app_client_generisch.get("/api/heizperiode")
-    assert resp.status == 200
-    for pfad, body in (("/api/heizperiode", {"modus": "sommer"}), ("/api/heizperiode/einrichten", {})):
-        resp = await app_client_generisch.post(pfad, json=body)
-        assert resp.status == 409
-        assert await resp.json() == NICHT_VERFUEGBAR
-    assert fake_generisch.service_calls == []
-    assert not [c for c in fake_generisch.ws_commands if c["type"] == "input_boolean/create"]
-    studio_generisch.heizperiode.start()
-    assert studio_generisch.heizperiode._task is None
-    with pytest.raises(web.HTTPConflict) as err:
-        await studio_generisch.adapter.heizperiode_anwenden(True, "input_boolean.pm_heizperiode")
-    assert err.value.status == 409
+async def test_aktionen_generisch_nicht_mehr_409(app_client_generisch, fake_generisch):
+    resp = await app_client_generisch.post("/api/steuerung/wohnzimmer", json={"aktion": "modus", "modus": "hand"})
+    assert resp.status == 200, await resp.text()
+    resp = await app_client_generisch.post("/api/heizperiode", json={"modus": "heizperiode"})
+    assert resp.status == 200, await resp.text()
+    assert not [c for c in fake_generisch.service_calls if c[0] == "pm_heizung"]
 
 
 # ------------------------------------------------------------------ Coach
@@ -373,7 +345,8 @@ async def test_coach_generisch(app_client_generisch, fake_generisch):
     resp = await app_client_generisch.get("/api/coach/lagebericht")
     lage = (await resp.json())["lage"]
     assert resp.status == 200
-    assert lage["integration"] == {"aktiv": None, "gesperrt": None, "sperre_grund": None, "sperre_wirkung": None}
+    # Phase 2: Lagebericht generisch ohne Integrationsfelder (siehe test_generisch_lesen.py)
+    assert "integration" not in lage
     assert {r["raum"] for r in lage["raeume"]} >= {"wohnzimmer", "kuche"}
     resp = await app_client_generisch.post("/api/coach/ki", json={})
     assert resp.status == 200, await resp.text()

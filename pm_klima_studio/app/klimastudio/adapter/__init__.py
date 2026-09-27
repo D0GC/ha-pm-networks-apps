@@ -13,13 +13,20 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, ClassVar
+from zoneinfo import ZoneInfo
 
 from aiohttp import web
 
 from ..config import Options, Room
 from ..ha_client import HAClient, HAError
 from ..steuerung import json_fehler
+
+if TYPE_CHECKING:
+    from ..coach.store import CoachStore
+    from ..plananwendung import Plananwendung
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,10 +55,20 @@ class Adapter(ABC):
     braucht_registries: ClassVar[bool] = False
     #: Heizperiode wirkt (Einstellen, Einrichten, Hintergrundprüfung schaltet)
     heizperiode_wirksam: ClassVar[bool] = True
+    #: Heizperiode als interner Zustand der App (keine Freigabe-Entität nötig)
+    heizperiode_intern: ClassVar[bool] = False
 
-    def __init__(self, opts: Options, client: HAClient) -> None:
+    def __init__(self, opts: Options, client: HAClient, store: CoachStore | None = None) -> None:
         self.opts = opts
         self.client = client
+        self.store = store
+        #: Uhr (UTC, zeitzonenbehaftet) und Zeitzone von HA; in Tests austauschbar
+        self.uhr: Callable[[], datetime] = lambda: datetime.now(UTC)
+        self.tz: Callable[[], ZoneInfo] = lambda: ZoneInfo("Europe/Berlin")
+        #: Räume der App (vom Server gesetzt); sonst werden sie aus den Zuständen ermittelt
+        self.raeume_quelle: Callable[[], Awaitable[list[Room]]] | None = None
+        #: Hintergrund-Task, der die Heizpläne anwendet (nur generisch mit ``plan_anwenden``)
+        self.plananwendung: Plananwendung | None = None
 
     # ------------------------------------------------------------- Räume
 
@@ -74,6 +91,14 @@ class Adapter(ABC):
     @abstractmethod
     def raum_faehigkeiten(self, room: Room, by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
         """Steuerbarkeit und Möglichkeiten des Raumthermostats."""
+
+    async def vorbereiten(self, rooms: list[Room], by_id: dict[str, dict[str, Any]]) -> None:
+        """Vor ``raum_zustand`` für mehrere Räume: Daten auffrischen (z. B. Heizpläne)."""
+        return None
+
+    def plan_geaendert(self) -> None:
+        """Ein Heizplan wurde über Klima Studio geändert."""
+        return None
 
     # ------------------------------------------------------------- Steuerung
 
@@ -105,6 +130,14 @@ class Adapter(ABC):
         """Ob die Freigabe-Entität mit der Integration verknüpft ist (None = unbekannt)."""
         return None
 
+    def heizperiode_ist(self) -> bool | None:
+        """Interner Zustand (``heizperiode_intern``): True = Heizperiode, False = Sommer."""
+        return None
+
+    async def heizperiode_spiegeln(self, aktiv: bool, entitaet: str, by_id: dict[str, dict[str, Any]]) -> None:
+        """Interner Zustand: vorhandene Spiegel-Entität (input_boolean) nachführen."""
+        return None
+
     def heizperiode_pruefen_schreiben(self) -> None:
         """HTTP 409, wenn die Heizperiode in dieser Betriebsart (noch) nicht geschaltet werden kann."""
         if not self.heizperiode_wirksam:
@@ -129,15 +162,15 @@ def nicht_verfuegbar() -> web.HTTPException:
     return json_fehler(web.HTTPConflict, "Im Modus Generisch noch nicht verfügbar.", "nicht_verfuegbar")
 
 
-def adapter_fuer(opts: Options, client: HAClient) -> Adapter:
-    """Fabrik: Adapter zur Option ``betriebsart``."""
+def adapter_fuer(opts: Options, client: HAClient, store: CoachStore | None = None) -> Adapter:
+    """Fabrik: Adapter zur Option ``betriebsart``. ``store`` hält den App-Zustand (nur generisch)."""
     if opts.betriebsart == "generisch":
         from .generisch import GenerischAdapter
 
-        return GenerischAdapter(opts, client)
+        return GenerischAdapter(opts, client, store)
     from .pm_klima import PmKlimaAdapter
 
-    return PmKlimaAdapter(opts, client)
+    return PmKlimaAdapter(opts, client, store)
 
 
 # ------------------------------------------------------------------ Erkennung PM Klima

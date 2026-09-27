@@ -18,7 +18,7 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: app_raeume (Betriebsart generisch: App-Zustand je Raum)
 MAX_KI_LAEUFE = 50
 MAX_EREIGNISSE = 2000
 
@@ -53,7 +53,40 @@ CREATE TABLE IF NOT EXISTS ereignisse (
     daten TEXT
 );
 CREATE INDEX IF NOT EXISTS ereignisse_typ ON ereignisse (typ);
+CREATE TABLE IF NOT EXISTS app_raeume (
+    raum TEXT PRIMARY KEY,
+    modus TEXT NOT NULL DEFAULT 'plan',
+    overlay_bis TEXT,
+    overlay_temp REAL,
+    boost_bis TEXT,
+    boost_art TEXT,
+    vor_temp REAL,
+    vor_preset TEXT,
+    geschrieben REAL,
+    geschrieben_zeit TEXT,
+    hvac_vor_aus TEXT,
+    hvac_vor_sommer TEXT,
+    sommer_aus_offen INTEGER NOT NULL DEFAULT 0,
+    geaendert TEXT
+);
 """
+
+# Spalten von app_raeume (ohne raum) mit Standardwerten
+APP_RAUM_FELDER: dict[str, Any] = {
+    "modus": "plan",
+    "overlay_bis": None,
+    "overlay_temp": None,
+    "boost_bis": None,
+    "boost_art": None,
+    "vor_temp": None,
+    "vor_preset": None,
+    "geschrieben": None,
+    "geschrieben_zeit": None,
+    "hvac_vor_aus": None,
+    "hvac_vor_sommer": None,
+    "sommer_aus_offen": False,
+    "geaendert": None,
+}
 
 
 def jetzt_iso() -> str:
@@ -216,6 +249,46 @@ class CoachStore:
             return self._lauf_aus_zeile(row) if row else None
 
         return await self._run(fn)
+
+    # ------------------------------------------------------------- App-Zustand (Betriebsart generisch)
+
+    def app_raeume_lesen(self) -> dict[str, dict[str, Any]]:
+        """App-Zustand aller Räume (synchron, kleine Tabelle): raum -> Felder ``APP_RAUM_FELDER``."""
+
+        def fn(c: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for r in c.execute("SELECT * FROM app_raeume"):
+                werte = {k: r[k] for k in APP_RAUM_FELDER}
+                werte["sommer_aus_offen"] = bool(werte["sommer_aus_offen"])
+                out[r["raum"]] = werte
+            return out
+
+        return self._ausfuehren(fn)
+
+    async def app_raum_setzen(self, raum: str, werte: dict[str, Any]) -> None:
+        """App-Zustand eines Raums vollständig schreiben (fehlende Felder: Standardwert)."""
+        felder = {k: werte.get(k, v) for k, v in APP_RAUM_FELDER.items()}
+        felder["sommer_aus_offen"] = 1 if felder["sommer_aus_offen"] else 0
+        felder["geaendert"] = jetzt_iso()
+        spalten = ", ".join(felder)
+        platz = ", ".join("?" for _ in felder)
+        update = ", ".join(f"{k} = excluded.{k}" for k in felder)
+        sql = f"INSERT INTO app_raeume (raum, {spalten}) VALUES (?, {platz}) ON CONFLICT(raum) DO UPDATE SET {update}"  # noqa: S608
+        daten = (raum, *felder.values())
+
+        def fn(c: sqlite3.Connection) -> None:
+            c.execute(sql, daten)
+
+        await self._run(fn)
+
+    def einstellung_lesen(self, schluessel: str) -> Any:
+        """Einstellung synchron lesen (für den App-Zustand beim ersten Zugriff)."""
+
+        def fn(c: sqlite3.Connection) -> Any:
+            row = c.execute("SELECT wert FROM einstellungen WHERE schluessel = ?", (schluessel,)).fetchone()
+            return _json_laden(row["wert"]) if row else None
+
+        return self._ausfuehren(fn)
 
     # ------------------------------------------------------------- Ereignisse
 

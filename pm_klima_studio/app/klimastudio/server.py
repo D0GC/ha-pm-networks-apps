@@ -119,7 +119,12 @@ class KlimaStudio:
     def __init__(self, opts: Options, client: HAClient, data_dir: Path = DATA_DIR, wissen_pfad: Path | None = None) -> None:
         self.opts = opts
         self.client = client
-        self.adapter = adapter_fuer(opts, client)
+        self.store = CoachStore(data_dir / "coach.db")
+        self.adapter = adapter_fuer(opts, client, self.store)
+        self.adapter.tz = lambda: self.tz
+        self.adapter.raeume_quelle = self.rooms
+        # Nur Betriebsart generisch mit plan_anwenden: Klima Studio wendet die Heizpläne selbst an
+        self.plananwendung = self.adapter.plananwendung
         self.pm_erkennung = PmKlimaErkennung(client, ROOM_TTL)
         self.data = DataService(client)
         self.archive = ReportArchive(data_dir / "berichte.json")
@@ -132,7 +137,6 @@ class KlimaStudio:
         self.scheduler: WeeklyScheduler | None = None
         self._tz_loaded = False
         self._tz_task: asyncio.Task | None = None
-        self.store = CoachStore(data_dir / "coach.db")
         self.heizperiode = Heizperiode(
             client, opts, self.store, tz=lambda: self.tz, bereit=lambda: self._tz_loaded, adapter=self.adapter
         )
@@ -172,6 +176,8 @@ class KlimaStudio:
         )
         self.scheduler.start()
         self.heizperiode.start()
+        if self.plananwendung is not None:
+            self.plananwendung.start(bereit=lambda: self._tz_loaded)
 
     async def stop(self) -> None:
         if self._tz_task:
@@ -181,6 +187,8 @@ class KlimaStudio:
         if self.scheduler:
             await self.scheduler.stop()
         await self.heizperiode.stop()
+        if self.plananwendung is not None:
+            await self.plananwendung.stop()
         self.store.close()
         await self.client.close()
 
@@ -246,7 +254,9 @@ class KlimaStudio:
             analyses = []
             for room in rooms:
                 analyses.append(await self.data.room_analysis(room, "7d", end=end, detail=False))
-            report = build_report(analyses, start, end, self.tz, anlass=anlass)
+            # Schimmelrisiko nur mit Daten (PM Klima bzw. zugeordnete Schimmelsensoren)
+            schimmel = self.adapter.faehigkeiten()["schimmel"] or any(r.schimmel for r in rooms)
+            report = build_report(analyses, start, end, self.tz, anlass=anlass, schimmel=schimmel)
             targets = dienste if dienste is not None else self.opts.bericht_notify
             if push and targets:
                 for svc in targets:
@@ -453,6 +463,7 @@ async def api_schedule_save(request: web.Request) -> web.Response:
     result = await ks.client.schedule_update(msg)
     _LOGGER.info("Heizplan %s gespeichert", item["id"])
     ks._overview.clear()
+    ks.adapter.plan_geaendert()
     return web.json_response(
         {"ok": True, "tage": sch.ha_to_ui(result), "revision": sch.revision(result), "name": result.get("name")}
     )
@@ -493,6 +504,7 @@ async def api_steuerung(request: web.Request) -> web.Response:
     states = await ks.client.get_states()
     by_id = {s["entity_id"]: s for s in states if "entity_id" in s}
     rooms = await ks.rooms()
+    await ks.adapter.vorbereiten(rooms, by_id)
     try:
         heizperiode = await ks.heizperiode.status(states)
     except (sqlite3.Error, HAError) as err:  # Raumsteuerung bleibt nutzbar

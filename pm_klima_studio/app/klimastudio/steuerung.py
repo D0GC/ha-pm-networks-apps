@@ -1,8 +1,9 @@
-"""Raumsteuerung über die Integration PM Klima.
+"""Raumsteuerung.
 
-Die App ruft ausschließlich Dienste ``pm_heizung.*`` bzw. ``climate.*`` auf
-Entitäten ``climate.pm_*`` (Präfix aus den Optionen) auf, nie ein
-Thermostat-Backend direkt.
+Betriebsart pm_networks: Die App ruft ausschließlich Dienste ``pm_heizung.*`` bzw. ``climate.*``
+auf Entitäten ``climate.pm_*`` (Präfix aus den Optionen) auf, nie ein Thermostat-Backend direkt.
+Betriebsart generisch: Standard-Dienste ``climate.*`` auf beliebigen Thermostaten
+(``pruefe_befehl_generisch``; Ausführung im Adapter ``adapter.generisch``).
 """
 
 from __future__ import annotations
@@ -135,6 +136,80 @@ def pruefe_befehl(body: dict[str, Any], attrs: dict[str, Any] | None = None) -> 
         "daten": {"hvac_mode": modus},
         "text": f"Modus {MODUS_TEXT[modus]}",
     }
+
+
+# ------------------------------------------------------------------ Betriebsart generisch
+
+MODI_GENERISCH = ("plan", "hand", "aus")
+MODUS_TEXT_GENERISCH = {"plan": "Plan (Heizplan)", "hand": "Hand", "aus": "Aus"}
+
+
+def grenzen_generisch(attrs: dict[str, Any]) -> tuple[float, float, float]:
+    """(min, max, Schrittweite) des Thermostats; Standard 5 bis 30 °C, Schritt 0,5 °C."""
+    lo = an.to_float(attrs.get("min_temp"))
+    hi = an.to_float(attrs.get("max_temp"))
+    schritt = an.to_float(attrs.get("target_temp_step"))
+    return (
+        lo if lo is not None else OVERLAY_TEMP[0],
+        hi if hi is not None else OVERLAY_TEMP[1],
+        schritt if schritt is not None and schritt > 0 else 0.5,
+    )
+
+
+def _temperatur_generisch(body: dict[str, Any], lo: float, hi: float, schritt: float) -> float:
+    v = body.get("temperatur")
+    if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(v):
+        raise json_fehler(web.HTTPBadRequest, "temperatur muss eine Zahl sein.", "ungueltig")
+    if not lo <= v <= hi:
+        raise json_fehler(
+            web.HTTPBadRequest, f"temperatur muss zwischen {_fmt_temp(lo)} und {_fmt_temp(hi)} °C liegen.", "ungueltig"
+        )
+    if abs(v / schritt - round(v / schritt)) > 1e-6:
+        raise json_fehler(web.HTTPBadRequest, f"temperatur muss ein Vielfaches von {_fmt_temp(schritt)} °C sein.", "ungueltig")
+    return round(round(v / schritt) * schritt, 2)
+
+
+def pruefe_befehl_generisch(body: dict[str, Any], attrs: dict[str, Any]) -> dict[str, Any]:
+    """Body im Modus generisch validieren (Grenzen und Schrittweite des Thermostats).
+
+    Rückgabe ``{"aktion", "temperatur"?, "dauer"?, "modus"?}``; die Dienstaufrufe wählt der Adapter.
+    """
+    aktion = body.get("aktion")
+    if aktion not in AKTIONEN:
+        raise json_fehler(web.HTTPBadRequest, "aktion muss overlay, temperatur, boost, zurueck oder modus sein.", "ungueltig")
+    erlaubt = {
+        "overlay": {"aktion", "temperatur", "dauer"},
+        "temperatur": {"aktion", "temperatur"},
+        "boost": {"aktion", "dauer"},
+        "zurueck": {"aktion"},
+        "modus": {"aktion", "modus"},
+    }[aktion]
+    extra = set(body) - erlaubt
+    if extra:
+        raise json_fehler(web.HTTPBadRequest, f"Unbekannte Felder: {', '.join(sorted(extra))}.", "ungueltig")
+    out: dict[str, Any] = {"aktion": aktion}
+    if aktion in ("overlay", "temperatur"):
+        out["temperatur"] = _temperatur_generisch(body, *grenzen_generisch(attrs))
+    if aktion == "overlay":
+        dauer = body.get("dauer")
+        if dauer is not None:
+            d = _ganzzahl(dauer)
+            if d is None or not OVERLAY_DAUER[0] <= d <= OVERLAY_DAUER[1]:
+                raise json_fehler(
+                    web.HTTPBadRequest, "dauer muss eine ganze Zahl von 0 bis 1440 Minuten oder leer sein.", "ungueltig"
+                )
+            dauer = d
+        out["dauer"] = dauer
+    elif aktion == "boost":
+        d = _ganzzahl(body.get("dauer"))
+        if d is None or not BOOST_DAUER[0] <= d <= BOOST_DAUER[1] or d % 5:
+            raise json_fehler(web.HTTPBadRequest, "dauer muss zwischen 5 und 240 Minuten liegen (in 5er-Schritten).", "ungueltig")
+        out["dauer"] = d
+    elif aktion == "modus":
+        if body.get("modus") not in MODI_GENERISCH:
+            raise json_fehler(web.HTTPBadRequest, "modus muss plan, hand oder aus sein.", "ungueltig")
+        out["modus"] = body["modus"]
+    return out
 
 
 def pruefe_modus(befehl: dict[str, Any], modus: Any) -> None:

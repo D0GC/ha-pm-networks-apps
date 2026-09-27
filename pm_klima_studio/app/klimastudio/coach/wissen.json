@@ -3,6 +3,7 @@
   "regeln": [
     {
       "id": "integration_pausiert",
+      "betriebsart": "pm_networks",
       "bereich": "global",
       "thema": "heizen",
       "prioritaet": 1,
@@ -21,6 +22,7 @@
     },
     {
       "id": "integration_gesperrt_kalt",
+      "betriebsart": "pm_networks",
       "bereich": "global",
       "thema": "heizen",
       "prioritaet": 2,
@@ -53,6 +55,7 @@
     },
     {
       "id": "heizperiode_nicht_eingerichtet",
+      "betriebsart": "pm_networks",
       "bereich": "global",
       "thema": "wartung",
       "prioritaet": 3,
@@ -75,6 +78,7 @@
     },
     {
       "id": "frost_ohne_heizperiode",
+      "betriebsart": "pm_networks",
       "bereich": "global",
       "thema": "heizen",
       "prioritaet": 1,
@@ -101,7 +105,36 @@
       }
     },
     {
+      "id": "frost_ohne_heizperiode_generisch",
+      "betriebsart": "generisch",
+      "bereich": "global",
+      "thema": "heizen",
+      "prioritaet": 1,
+      "saison": "sommer",
+      "wenn": {
+        "eine": [
+          {
+            "wert": "wetter.min_morgen",
+            "op": "<",
+            "ref": 0
+          },
+          {
+            "wert": "wetter.min_3tage",
+            "op": "<",
+            "ref": -2
+          }
+        ]
+      },
+      "titel": "Frost erwartet, Heizperiode ist nicht aktiv",
+      "text": "Für die nächsten Tage wird Frost bis {wetter.min_3tage} °C erwartet. Die Heizperiode ist nicht aktiv, Klima Studio wendet die Heizpläne daher nicht an.",
+      "begruendung": "Bei Frost kühlen Räume schnell aus. Kalte Außenwände begünstigen Tauwasser, in unbeheizten Bereichen können Leitungen einfrieren. Beginnen Sie die Heizperiode oder heizen Sie gefährdete Räume im Handbetrieb.",
+      "massnahme": {
+        "typ": "info"
+      }
+    },
+    {
       "id": "frost_raum_aus",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "heizen",
       "prioritaet": 1,
@@ -132,6 +165,41 @@
         "typ": "steuerung",
         "aktion": "modus",
         "modus": "auto"
+      }
+    },
+    {
+      "id": "frost_raum_aus_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 1,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "aus"
+          },
+          {
+            "wert": "wetter.min_3tage",
+            "op": "<",
+            "ref": 0
+          },
+          {
+            "wert": "raum.ist",
+            "op": "<",
+            "ref": 14
+          }
+        ]
+      },
+      "titel": "Raum ausgeschaltet bei erwartetem Frost",
+      "text": "Der Raum {raum.name} ist ausgeschaltet und hat {raum.ist} °C. Für die nächsten Tage wird Frost bis {wetter.min_3tage} °C erwartet.",
+      "begruendung": "Ein ausgeschalteter Raum kühlt bei Frost weiter aus. Unter etwa 12 °C steigt das Risiko für Tauwasser an Außenwänden und für Frostschäden an Leitungen.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "plan"
       }
     },
     {
@@ -267,6 +335,7 @@
     },
     {
       "id": "sommer_raum_kalt",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "heizen",
       "prioritaet": 2,
@@ -503,6 +572,7 @@
     },
     {
       "id": "sommer_handbetrieb_heizt",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "energie",
       "prioritaet": 2,
@@ -531,7 +601,39 @@
       }
     },
     {
+      "id": "sommer_handbetrieb_heizt_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "plananwendung": true,
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "hand"
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 16
+          }
+        ]
+      },
+      "titel": "Handbetrieb heizt trotz Sommerbetrieb",
+      "text": "Der Raum {raum.name} steht im Handbetrieb auf {raum.soll} °C. Klima Studio pausiert außerhalb der Heizperiode nur Räume im Planbetrieb, dieser Raum kann daher weiterheizen.",
+      "begruendung": "Räume im Handbetrieb, mit Überbrückung oder Boost bleiben von der Sommerpause unberührt.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "aus"
+      }
+    },
+    {
       "id": "sommer_ueberbrueckung_heizt",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "energie",
       "prioritaet": 2,
@@ -558,6 +660,40 @@
       "titel": "Überbrückung heizt trotz Sommerbetrieb",
       "text": "Im Raum {raum.name} ist eine Überbrückung auf {raum.soll} °C aktiv. Sie heizt auch außerhalb der Heizperiode.",
       "begruendung": "Eine Überbrückung wird von der Sommersperre nicht erfasst. Bei milder Witterung ist sie meist nicht mehr nötig.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
+      "id": "sommer_ueberbrueckung_heizt_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "sommer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.overlay_aktiv",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 18
+          },
+          {
+            "wert": "aussen.temperatur",
+            "op": ">=",
+            "ref": 15
+          }
+        ]
+      },
+      "titel": "Überbrückung heizt trotz Sommerbetrieb",
+      "text": "Im Raum {raum.name} ist eine Überbrückung auf {raum.soll} °C aktiv. Sie heizt auch außerhalb der Heizperiode.",
+      "begruendung": "Eine Überbrückung bleibt von der Sommerpause unberührt. Bei milder Witterung ist sie meist nicht mehr nötig.",
       "massnahme": {
         "typ": "steuerung",
         "aktion": "zurueck"
@@ -1001,6 +1137,7 @@
     },
     {
       "id": "plan_leer",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "heizplan",
       "prioritaet": 2,
@@ -1027,7 +1164,36 @@
       }
     },
     {
+      "id": "plan_leer_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "plan"
+          }
+        ]
+      },
+      "titel": "Heizplan ohne Einträge",
+      "text": "Der Raum {raum.name} steht im Planbetrieb, sein Heizplan enthält aber keine Heizblöcke. Klima Studio hält den Raum damit dauerhaft auf der Absenktemperatur.",
+      "begruendung": "Im Planbetrieb richtet sich die Solltemperatur nur nach dem Plan. Ohne Blöcke wird der Raum nie auf Komforttemperatur geheizt.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
       "id": "plan_tage_ohne_block",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "heizplan",
       "prioritaet": 3,
@@ -1059,7 +1225,41 @@
       }
     },
     {
+      "id": "plan_tage_ohne_block_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.plan.tage_ohne_block",
+            "op": ">=",
+            "ref": 1
+          },
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "plan"
+          }
+        ]
+      },
+      "titel": "Heizplan hat Tage ohne Heizblock",
+      "text": "Im Heizplan des Raums {raum.name} haben {raum.plan.tage_ohne_block} Wochentage keinen Heizblock. Prüfen Sie, ob das beabsichtigt ist.",
+      "begruendung": "An Tagen ohne Block hält Klima Studio den Raum auf der Absenktemperatur. Das ist bei ungenutzten Tagen sinnvoll, sonst meist ein Versehen.",
+      "massnahme": {
+        "typ": "heizplan"
+      }
+    },
+    {
       "id": "ueberbrueckung_dauerhaft",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "heizen",
       "prioritaet": 2,
@@ -1078,7 +1278,28 @@
       }
     },
     {
+      "id": "ueberbrueckung_dauerhaft_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "wert": "raum.overlay_dauerhaft",
+        "op": "==",
+        "ref": true
+      },
+      "titel": "Dauerhafte Überbrückung aktiv",
+      "text": "Im Raum {raum.name} gilt eine dauerhafte Überbrückung auf {raum.soll} °C.",
+      "begruendung": "Eine dauerhafte Überbrückung endet nicht von selbst. Der Raum hält den Wert rund um die Uhr, bis Sie sie beenden.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
       "id": "ueberbrueckung_hoch",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "energie",
       "prioritaet": 3,
@@ -1125,7 +1346,56 @@
       }
     },
     {
+      "id": "ueberbrueckung_hoch_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 3,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.overlay_aktiv",
+            "op": "==",
+            "ref": true
+          },
+          {
+            "nicht": {
+              "wert": "raum.overlay_dauerhaft",
+              "op": "==",
+              "ref": true
+            }
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 23.5
+          },
+          {
+            "wert": "raum.nassraum",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "nicht": {
+              "wert": "anwesenheit.jemand_zuhause",
+              "op": "==",
+              "ref": false
+            }
+          }
+        ]
+      },
+      "titel": "Überbrückung mit hoher Temperatur",
+      "text": "Im Raum {raum.name} ist eine Überbrückung auf {raum.soll} °C aktiv.",
+      "begruendung": "Ein höherer Sollwert heizt den Raum nicht schneller auf, er verlängert nur die Heizzeit. Jedes Grad mehr kostet rund 6 % Heizenergie.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "zurueck"
+      }
+    },
+    {
       "id": "handbetrieb_dauerhaft",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "heizplan",
       "prioritaet": 2,
@@ -1153,6 +1423,39 @@
         "typ": "steuerung",
         "aktion": "modus",
         "modus": "auto"
+      }
+    },
+    {
+      "id": "handbetrieb_dauerhaft_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "heizplan",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "plananwendung": true,
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "hand"
+          },
+          {
+            "nicht": {
+              "wert": "anwesenheit.jemand_zuhause",
+              "op": "==",
+              "ref": false
+            }
+          }
+        ]
+      },
+      "titel": "Raum im Handbetrieb",
+      "text": "Der Raum {raum.name} steht im Handbetrieb auf {raum.soll} °C. Klima Studio wendet den Heizplan für diesen Raum nicht an.",
+      "begruendung": "Im Handbetrieb hält das Thermostat seinen Wert rund um die Uhr. Im Planbetrieb wird nur zu den Nutzungszeiten geheizt.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "plan"
       }
     },
     {
@@ -1187,6 +1490,7 @@
     },
     {
       "id": "raum_aus_feucht",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "feuchte",
       "prioritaet": 2,
@@ -1224,7 +1528,38 @@
       }
     },
     {
+      "id": "raum_aus_feucht_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "feuchte",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "aus"
+          },
+          {
+            "wert": "raum.feuchte",
+            "op": ">=",
+            "ref": 65
+          }
+        ]
+      },
+      "titel": "Ausgeschalteter Raum ist feucht",
+      "text": "Der Raum {raum.name} ist ausgeschaltet. Die Luftfeuchte liegt bei {raum.feuchte} % bei {raum.ist} °C.",
+      "begruendung": "Ein unbeheizter Raum kühlt an den Wänden stark ab. Feuchte aus der Wohnung schlägt sich dort nieder und begünstigt Schimmel.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "plan"
+      }
+    },
+    {
       "id": "raum_aus_kalt",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "heizen",
       "prioritaet": 2,
@@ -1271,6 +1606,50 @@
         "typ": "steuerung",
         "aktion": "modus",
         "modus": "auto"
+      }
+    },
+    {
+      "id": "raum_aus_kalt_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "aus"
+          },
+          {
+            "wert": "raum.ist",
+            "op": "<",
+            "ref": 15
+          },
+          {
+            "nicht": {
+              "wert": "raum.feuchte",
+              "op": ">=",
+              "ref": 65
+            }
+          },
+          {
+            "nicht": {
+              "wert": "wetter.min_3tage",
+              "op": "<",
+              "ref": 0
+            }
+          }
+        ]
+      },
+      "titel": "Ausgeschalteter Raum kühlt aus",
+      "text": "Der Raum {raum.name} ist ausgeschaltet und hat {raum.ist} °C. In der Heizperiode sollte er nicht dauerhaft unter 16 °C fallen.",
+      "begruendung": "Kalte Wände nehmen Feuchte aus der Wohnungsluft auf. Das Wiederaufheizen eines ausgekühlten Raums dauert zudem lange.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "plan"
       }
     },
     {
@@ -1375,6 +1754,7 @@
     },
     {
       "id": "abwesend_handbetrieb",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "energie",
       "prioritaet": 2,
@@ -1405,6 +1785,42 @@
         "typ": "steuerung",
         "aktion": "modus",
         "modus": "auto"
+      }
+    },
+    {
+      "id": "abwesend_handbetrieb_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "energie",
+      "prioritaet": 2,
+      "saison": "heizperiode",
+      "plananwendung": true,
+      "wenn": {
+        "alle": [
+          {
+            "wert": "anwesenheit.jemand_zuhause",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "hand"
+          },
+          {
+            "wert": "raum.soll",
+            "op": ">=",
+            "ref": 18
+          }
+        ]
+      },
+      "titel": "Niemand zu Hause, Raum im Handbetrieb",
+      "text": "Es ist niemand zu Hause. Der Raum {raum.name} heizt im Handbetrieb auf {raum.soll} °C.",
+      "begruendung": "Im Handbetrieb heizt der Raum unabhängig von Plan und Anwesenheit. Im Planbetrieb gilt die geplante Absenkung.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "plan"
       }
     },
     {
@@ -1629,6 +2045,7 @@
     },
     {
       "id": "lueften_empfohlen",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "lueften",
       "prioritaet": 3,
@@ -1807,6 +2224,7 @@
     },
     {
       "id": "luftqualitaet_schlecht",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "co2",
       "prioritaet": 2,
@@ -1833,6 +2251,7 @@
     },
     {
       "id": "schimmel_akut",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "feuchte",
       "prioritaet": 1,
@@ -1851,6 +2270,7 @@
     },
     {
       "id": "schimmel_erhoeht",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "feuchte",
       "prioritaet": 2,
@@ -1878,6 +2298,7 @@
     },
     {
       "id": "schimmel_woche_80",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "feuchte",
       "prioritaet": 1,
@@ -1907,6 +2328,7 @@
     },
     {
       "id": "schimmel_woche_70",
+      "betriebsart": "pm_networks",
       "bereich": "raum",
       "thema": "feuchte",
       "prioritaet": 2,

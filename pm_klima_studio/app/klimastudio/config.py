@@ -183,11 +183,14 @@ class Room:
     co2: str | None = None
     # Raumtemperatursensor (nur Betriebsart generisch, Bereichszuordnung); fehlt in to_dict, wenn leer
     temperatur: str | None = None
+    # Absenktemperatur des Raums (Override ``absenk``, nur Betriebsart generisch); fehlt in to_dict, wenn leer
+    absenk: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        if d["temperatur"] is None:
-            del d["temperatur"]
+        for key in ("temperatur", "absenk"):
+            if d[key] is None:
+                del d[key]
         return d
 
     def entities(self) -> list[str]:
@@ -296,6 +299,14 @@ def overrides_anwenden(rooms: dict[str, Room], opts: Options) -> list[Room]:
                     _LOGGER.warning("Raum %s: %s ist für %s nicht zulässig", slug, val, key)
                     continue
                 setattr(room, key, val)
+        if ov.get("absenk") is not None:
+            wert = _absenk(ov["absenk"])
+            if wert is None:
+                _LOGGER.warning(
+                    "Raum %s: absenk %r ist nicht zulässig (%g bis %g °C in 0,5er-Schritten)", slug, ov["absenk"], *ABSENK_GRENZEN
+                )
+            else:
+                room.absenk = wert
         rooms[slug] = room
 
     order = {r["raum"]: i for i, r in enumerate(opts.raeume)}

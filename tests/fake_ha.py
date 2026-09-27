@@ -84,6 +84,22 @@ def _t(value: str) -> int:
     return h * 60 + m
 
 
+def naechstes_ereignis(item: dict[str, Any], local: datetime) -> datetime | None:
+    """Nächster Blockbeginn oder -ende nach ``local`` (Attribut ``next_event`` der schedule-Entität)."""
+    tag0 = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    for d in range(9):
+        tag = tag0 + timedelta(days=d)
+        kandidaten = []
+        for rng in item.get(DAYS[tag.weekday()], []):
+            for key in ("from", "to"):
+                t = datetime.combine(tag.date(), datetime.min.time(), tzinfo=TZ) + timedelta(minutes=_t(rng[key]))
+                if t > local:
+                    kandidaten.append(t)
+        if kandidaten:
+            return min(kandidaten)
+    return None
+
+
 def schedule_temp(item: dict[str, Any], local: datetime) -> float | None:
     mins = local.hour * 60 + local.minute
     for rng in item.get(DAYS[local.weekday()], []):
@@ -446,6 +462,8 @@ class FakeHA:
         self.fail_notify: set[str] = set()
         self.fail_registry = False
         self.fail_config = 0  # Anzahl der nächsten /config-Aufrufe, die mit 502 scheitern
+        # Uhr des generischen Zuhauses (Zustand der schedule-Entitäten); in Tests austauschbar
+        self.uhr: Callable[[], datetime] = lambda: datetime.now(UTC)
         self.app = web.Application()
         r = self.app.router
         r.add_get("/core/api/states", self.states)
@@ -569,8 +587,19 @@ class FakeHA:
                 attrs["unit_of_measurement"] = einheit
                 attrs["state_class"] = "measurement"
             add(eid, v, attrs)
+        # schedule-Entitäten wie in HA: on im Block (Block-data als Attribute), next_event
+        lokal = self.uhr().astimezone(TZ)
         for slug, cfg in ROOMS.items():
-            add(f"schedule.heizplan_{slug}", "off", {"editable": True, "friendly_name": f"Heizplan {cfg['name']}"})
+            item = self.schedules.get(f"heizplan_{slug}")
+            if item is None:
+                continue
+            attrs = {"editable": True, "friendly_name": f"Heizplan {cfg['name']}"}
+            temp = schedule_temp(item, lokal)
+            if temp is not None:
+                attrs["temperatur"] = temp
+            nxt = naechstes_ereignis(item, lokal)
+            attrs["next_event"] = nxt.isoformat() if nxt else None
+            add(f"schedule.heizplan_{slug}", "on" if temp is not None else "off", attrs)
         for eid in ("sensor.aussentemperatur", "sensor.aussenluftfeuchte"):
             v, _ = self.sim.last(eid)
             add(eid, v, {})

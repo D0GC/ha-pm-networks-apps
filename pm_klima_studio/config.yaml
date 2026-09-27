@@ -51,6 +51,7 @@ schema:
       lueften: str?
       fenster: str?
       co2: str?
+      absenk: float(5,25)?
       ausblenden: bool?
   praefix_klima: str?
   praefix_heizplan: str?
