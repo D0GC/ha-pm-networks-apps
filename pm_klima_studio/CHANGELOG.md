@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0 – 2026-09-27
+
+- Neue Option `betriebsart`: `pm_networks` (Standard) mit der Integration PM Klima, `generisch` für beliebige Thermostate ohne PM Klima. Im Modus `pm_networks` bleibt das Verhalten von 1.1.1 unverändert. Klima Studio erkennt, ob PM Klima geladen ist, und zeigt einen Hinweis, wenn die Betriebsart nicht passt; umgeschaltet wird nie automatisch.
+- Generisch, Räume: aus den Bereichen von Home Assistant (Bereich der Entität vor dem des Geräts), Thermostate ohne Bereich als eigener Raum. Sensoren des Bereichs nach Geräteklasse. Mehrere Thermostate im Bereich: gesteuert wird eines, die übrigen werden genannt. Better Thermostat hat Vorrang vor seinen Quellgeräten. Entitäten von PM Klima werden nie als Thermostat verwendet.
+- Generisch, Steuerung: Modi Plan, Hand und Aus über die Standard-Dienste `climate.*`. Zeitweise Temperatur (nur Plan), Handwert (nur Hand), Boost über das Preset `boost` oder höchstens 25 °C mit Rück-Timer, „Zurück zum Plan“. Timer und Modi liegen in `/data/coach.db` und überstehen einen Neustart. Thermostate mit Temperaturbereich werden nur angezeigt.
+- Generisch, Plananwendung: Neue Option `plan_anwenden` (Standard an). Klima Studio stellt Räume im Modus Plan minütlich nach dem Heizplan ein, außerhalb der Blöcke auf die Absenktemperatur (neue Option `absenktemperatur`, Standard 17 °C, je Raum Override `absenk`).
+- Generisch, Heizperiode: gleiche Automatik wie bisher, Zustand intern. Neue Option `sommer_aktion`: `plan_pausieren_und_aus` (Standard) pausiert die Heizpläne und schaltet Räume im Modus Plan aus, `plan_pausieren` pausiert nur. Zu Beginn der Heizperiode werden die Räume wieder eingeschaltet. `heizperiode_entitaet` wird generisch nur als optionaler Spiegel geschaltet.
+- Sicherheitsmechanismen im generischen Modus: neue Räume starten im Modus Hand; geschrieben wird nur auf Thermostate im Zustand `heat` und nur bei geändertem Soll; Toleranz von halber Schrittweite, mindestens 0,25 °C; Handänderungen am Gerät gelten bis zum nächsten Planwechsel; kein Erhöhen bei offenem Fenster; Pause bei nicht verfügbarem Thermostat und Backoff nach Fehlern (bis 60 Minuten); Hinweis bei nicht übernommenem Sollwert.
+- Klima-Coach nach Betriebsart: Regeln gekennzeichnet (70 mit PM Networks, 61 generisch), generische Gegenstücke für Plan, Hand und Aus, z. B. „Heizplan noch nicht aktiv“. Eigene Anweisungen an die KI je Betriebsart.
+- Oberfläche: blendet Freigabe, Integrationsstatus, Hinweise der Integration und Schimmelrisiko nach Betriebsart ein. Übersicht generisch mit Karte „Betrieb“ und Status je Raum. Raumkarten generisch mit Plan-Soll, nächstem Wechsel und Hinweisen.
+- Fußzeile mit „© 2026 PM Networks“.
+
 ## 1.1.1 – 2026-09-27
 
 - Behoben: Die Reiter „Steuerung“, „Coach“ und die übrigen Reiter wurden nach einer langsam ladenden Übersicht von dieser überschrieben, man landete immer wieder auf der Übersicht. Ein veralteter Ladevorgang schreibt nicht mehr in die sichtbare Ansicht.

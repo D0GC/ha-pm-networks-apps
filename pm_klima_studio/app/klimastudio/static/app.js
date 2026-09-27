@@ -637,7 +637,7 @@
     const tage = fullDays(p.tage);
     let leer = false;
     if (DAYS.every(d => !tage[d].length)) {
-      leer = await modal("Heizplan vollständig leeren?", `<div class="warnbox">An keinem Tag ist ein Block eingetragen. Nach dem Speichern gilt in ${esc(roomName(p.raum))} dauerhaft ${generisch() ? absenkText(p.raum) : "die Grundtemperatur der Integration"}.</div>`,
+      leer = await modal("Heizplan vollständig leeren?", `<div class="warnbox">An keinem Tag ist ein Block eingetragen. ${generisch() ? `Nach dem Speichern wendet die App für ${esc(roomName(p.raum))} keinen Plan an. Der zuletzt gesetzte Sollwert bleibt bestehen.` : `Nach dem Speichern gilt in ${esc(roomName(p.raum))} dauerhaft die Grundtemperatur der Integration.`}</div>`,
         [{ label: "Abbrechen", value: false, cls: "ghost" }, { label: "Leeren bestätigen", value: true, cls: "danger" }]);
       if (!leer) return;
     }

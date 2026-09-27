@@ -1,13 +1,29 @@
-# PM Klima Studio
+<p align="center"><img src="images/banner.png" alt="PM Klima Studio" width="100%"></p>
 
-![PM Klima Studio auf Desktop und Smartphone](https://raw.githubusercontent.com/D0GC/ha-pm-networks-apps/main/docs/images/titelbild.webp)
+# Anleitung: PM Klima Studio 1.2.0
 
-Klima Studio plant, steuert und wertet das Raumklima in Home Assistant aus: Heizpläne als Wochenansicht,
-Steuerung je Raum, Heizperiode und Sommerbetrieb, Auswertungen, ein lokaler Klima-Coach mit optionaler KI-Analyse
-und ein Wochenbericht.
+Diese Anleitung führt Schritt für Schritt durch Installation, Einrichtung und Bedienung. Sie gilt für beide
+Betriebsarten. Abschnitte, die nur für eine Betriebsart gelten, sind entsprechend gekennzeichnet.
 
-Die ausführliche Anleitung mit Screenshots finden Sie auch auf GitHub:
-<https://github.com/D0GC/ha-pm-networks-apps/blob/main/docs/ANLEITUNG.md>
+**Inhalt**
+
+1. [Betriebsarten im Überblick](#betriebsarten-im-überblick)
+2. [Voraussetzungen](#voraussetzungen)
+3. [Installation](#installation)
+4. [Betriebsart wählen](#betriebsart-wählen)
+5. [Erste Schritte](#erste-schritte)
+6. [Optionen](#optionen)
+7. [Räume](#räume)
+8. [Heizpläne](#heizpläne)
+9. [Steuerung](#steuerung)
+10. [Heizperiode und Sommerbetrieb](#heizperiode-und-sommerbetrieb)
+11. [Sicherheitsmechanismen im generischen Modus](#sicherheitsmechanismen-im-generischen-modus)
+12. [Übersicht und Auswertungen](#übersicht-und-auswertungen)
+13. [Klima-Coach und KI](#klima-coach-und-ki)
+14. [Wochenbericht](#wochenbericht)
+15. [Datenschutz und Sicherheit](#datenschutz-und-sicherheit)
+16. [Fehlerbehebung](#fehlerbehebung)
+17. [Häufige Fragen](#häufige-fragen)
 
 ## Betriebsarten im Überblick
 
@@ -56,6 +72,13 @@ Nur **Generisch**:
 
 ## Installation
 
+**Schritt 1: Repository hinzufügen.** Klicken Sie auf den folgenden Knopf. Home Assistant öffnet den Dialog zum
+Hinzufügen des Repositorys.
+
+[![Repository zu Home Assistant hinzufügen](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FD0GC%2Fha-pm-networks-apps)
+
+Alternativ von Hand:
+
 1. **Einstellungen → Apps → App-Store** öffnen.
 2. Menü (drei Punkte) → **Repositories**.
 3. `https://github.com/D0GC/ha-pm-networks-apps` eintragen und **Hinzufügen** wählen.
@@ -95,6 +118,8 @@ Der Hinweis lässt sich bis zum nächsten Neuladen ausblenden.
    (siehe [Heizperiode mit PM Networks](#heizperiode-mit-pm-networks)).
 3. Im Reiter **Heizplan** die Pläne der Räume prüfen und bei Bedarf anpassen.
 4. Optional: `bericht_notify` für den Wochenbericht und `coach_ki_entitaet` für die KI-Analyse eintragen.
+
+<p align="center"><img src="images/mobil-pm-uebersicht.webp" alt="Übersicht auf dem Smartphone" width="320"></p>
 
 ### Generisch
 
@@ -237,7 +262,7 @@ raeume_override:
 
 ## Heizpläne
 
-![Reiter Heizplan mit Wochenansicht und Zeitblöcken](https://raw.githubusercontent.com/D0GC/ha-pm-networks-apps/main/docs/images/pm-heizplan.webp)
+![Reiter Heizplan mit Wochenansicht und Zeitblöcken](images/pm-heizplan.webp)
 
 Heizpläne sind `schedule`-Helfer von Home Assistant. Klima Studio bearbeitet sie im Reiter **Heizplan** als
 Wochenansicht. Jeder Block trägt seine Solltemperatur in den Blockdaten als `temperatur`.
@@ -273,6 +298,8 @@ nur Räume mit zugeordnetem Heizplan.
 - **Generisch:** die Absenktemperatur (`absenk` des Raums, sonst Option `absenktemperatur`). Klima Studio führt
   den Plan aus, siehe [Plananwendung](#plananwendung-nur-generisch).
 
+<p align="center"><img src="images/mobil-pm-heizplan.webp" alt="Heizplan auf dem Smartphone" width="320"></p>
+
 ## Steuerung
 
 Der Reiter **Steuerung** zeigt oben die Karte **Heizperiode** und darunter je Raum eine Karte mit Ist- und
@@ -281,7 +308,7 @@ solange der Reiter geöffnet ist. Jeder Befehl wird im Ereignisprotokoll der App
 
 ### Steuerung mit PM Networks
 
-![Reiter Steuerung in der Betriebsart PM Networks](https://raw.githubusercontent.com/D0GC/ha-pm-networks-apps/main/docs/images/pm-steuerung.webp)
+![Reiter Steuerung in der Betriebsart PM Networks](images/pm-steuerung.webp)
 
 Jeder Befehl läuft ausschließlich über die Integration PM Klima: Klima Studio ruft die Dienste `pm_heizung.*` und
 `climate.*` auf den Entitäten `climate.pm_<raum>` auf, nie ein Thermostat direkt.
@@ -308,7 +335,7 @@ Integration ist dann pausiert. Sperrt die Integration das Heizen, wird der Grund
 
 ### Steuerung generisch
 
-![Reiter Steuerung in der Betriebsart Generisch](https://raw.githubusercontent.com/D0GC/ha-pm-networks-apps/main/docs/images/gen-steuerung.webp)
+![Reiter Steuerung in der Betriebsart Generisch](images/gen-steuerung.webp)
 
 Klima Studio schaltet die Thermostate direkt über die Standard-Dienste `climate.*` von Home Assistant. Je Raum
 führt es einen eigenen Modus:
@@ -343,6 +370,8 @@ Nur angezeigt, nicht gesteuert werden:
 
 Die Karte nennt dann den Grund.
 
+<p align="center"><img src="images/mobil-gen-steuerung.webp" alt="Steuerung generisch auf dem Smartphone" width="320"></p>
+
 ### Plananwendung (nur Generisch)
 
 Mit `plan_anwenden: true` (Standard) prüft Klima Studio jede Minute alle Räume:
@@ -360,6 +389,8 @@ Mit `plan_anwenden: false` wendet Klima Studio keine Heizpläne an. Zeitweise Ä
 funktionieren weiter.
 
 ## Heizperiode und Sommerbetrieb
+
+![Karte Heizperiode mit Tagesmitteln der Außentemperatur](images/gen-heizperiode.webp)
 
 Die Karte **Heizperiode** im Reiter **Steuerung** schaltet zwischen Heizperiode und Sommerbetrieb um.
 
@@ -387,6 +418,8 @@ Heizgrenze (5 bis 20 °C), Hysterese (0 bis 5 K) und die Tage bis Beginn und End
 den letzten Wechsel. Klima Studio prüft beim Start und danach stündlich.
 
 ### Heizperiode mit PM Networks
+
+![Karte Heizperiode mit Freigabe-Entität](images/pm-heizperiode.webp)
 
 Klima Studio schaltet nur eine Freigabe-Entität (Standard `input_boolean.pm_heizperiode`). Die Integration PM Klima
 setzt die Sperre um:
@@ -471,12 +504,16 @@ Weil Klima Studio im generischen Modus selbst schaltet, gelten zusätzliche Schu
 
 ## Übersicht und Auswertungen
 
+![Reiter Übersicht in der Betriebsart PM Networks](images/pm-uebersicht.webp)
+
 Die **Übersicht** zeigt je Raum Ist- und Solltemperatur, Status, Heizzeit, Feuchte, Fenster und CO2 für 24 Stunden,
 7 oder 30 Tage, dazu die Außenwerte und den nächsten Wochenbericht.
 
 - **PM Networks:** zusätzlich die Empfehlungen der Integration und das Schimmelrisiko.
 - **Generisch:** eine Karte **Betrieb** mit der Zahl der Räume in Plan, Hand und Aus, laufenden Boosts und
   zeitweisen Änderungen sowie der Sommer-Pause.
+
+![Reiter Übersicht in der Betriebsart Generisch](images/gen-uebersicht.webp)
 
 Der Reiter **Auswertung** zeigt je Raum:
 
@@ -489,9 +526,11 @@ Der Reiter **Auswertung** zeigt je Raum:
 Soll, Ist und Fensterzeiten stammen aus der Recorder-Historie (Standard 10 Tage). Längere Zeiträume werden
 entsprechend gekennzeichnet.
 
+![Reiter Auswertung mit Soll/Ist, Feuchte, Schimmelrisiko und CO2](images/pm-auswertung.webp)
+
 ## Klima-Coach und KI
 
-![Reiter Coach mit lokalen Hinweisen und KI-Ergebnis](https://raw.githubusercontent.com/D0GC/ha-pm-networks-apps/main/docs/images/gen-coach.webp)
+![Reiter Coach mit lokalen Hinweisen und KI-Ergebnis](images/gen-coach.webp)
 
 **Aktuelle Hinweise** entstehen lokal aus einer Wissensdatenbank, die Teil der App ist. Die Regeln prüfen die
 aktuellen Werte, die Wochenwerte und die Heizpläne jedes Raums sowie Außentemperatur, Wettervorhersage, Heizperiode
@@ -510,6 +549,8 @@ und Jahreszeit. Die Auswertung läuft vollständig in der App.
 **Analyse anfordern** sendet einen Lagebericht an die KI-Aufgabe aus `coach_ki_entitaet` und zeigt eine
 Zusammenfassung und bis zu acht Tipps.
 
+![Ergebnis einer KI-Analyse mit Tipps](images/pm-ki.webp)
+
 - Die Analyse läuft nur auf Knopfdruck, nie automatisch. Sie kann bis zu drei Minuten dauern.
 - Es läuft höchstens eine Analyse gleichzeitig.
 - **Was wird übermittelt?** zeigt vorab genau den Lagebericht, der gesendet würde.
@@ -518,7 +559,11 @@ Zusammenfassung und bis zu acht Tipps.
 - Frühere Auswertungen stehen im Verlauf. Kann die Antwort nicht gelesen werden, erscheint der Rohtext.
 - Fehlt die KI-Entität, meldet Klima Studio das. Die lokalen Hinweise funktionieren auch ohne KI.
 
+![Vorschau „Was wird übermittelt?“ mit dem Lagebericht](images/pm-lagebericht.webp)
+
 ## Wochenbericht
+
+![Reiter Berichte mit Wochenbericht](images/pm-berichte.webp)
 
 Klima Studio erstellt den Wochenbericht standardmäßig sonntags um 18:00 Uhr (Optionen `bericht_tag`,
 `bericht_uhrzeit`). Er enthält je Raum Heizzeit, Feuchte, CO2 und Fensterzeiten, mit PM Networks auch das

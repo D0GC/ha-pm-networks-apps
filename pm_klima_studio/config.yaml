@@ -15,6 +15,7 @@ ingress_port: 8099
 panel_icon: mdi:thermometer-lines
 panel_title: Klima Studio
 panel_admin: true
+homeassistant: "2026.9.0"
 homeassistant_api: true
 hassio_api: false
 stage: stable
