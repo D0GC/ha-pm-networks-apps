@@ -583,11 +583,13 @@ class Heizperiode:
             neu = dict(gespeichert)
             if aktiv != bisher or erzwingen:
                 neu["angewendet"] = False
+            # Allererste Entscheidung der Automatik: nur den Zustand merken, keine Thermostate umstellen
+            erstentscheid = not gespeichert and einst["modus"] == "automatik"
             neu["entscheidung"] = aktiv
             try:
                 if ist is not aktiv or not neu.get("angewendet"):
                     neu["angewendet"] = False
-                    await self.adapter.heizperiode_anwenden(aktiv, self.entitaet)
+                    await self.adapter.heizperiode_anwenden(aktiv, self.entitaet, erstentscheid=erstentscheid)
                     if self.adapter.heizperiode_ist() is aktiv:
                         neu["angewendet"] = True
                         if ist is not aktiv:

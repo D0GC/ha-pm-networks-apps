@@ -89,7 +89,8 @@ def werk() -> Regelwerk:
 def test_kennzeichnung_der_regeln(werk):
     nach_art = {art: {r["id"] for r in werk.regeln if r["betriebsart"] == art} for art in (*BETRIEBSARTEN, None)}
     assert nach_art["pm_networks"] == NUR_PM
-    assert nach_art["generisch"] == {f"{i}_generisch" for i in GEGENSTUECKE}
+    # frost_raum_aus_generisch gilt in der Heizperiode (Maßnahme plan), das Sommer-Gegenstück empfiehlt hand
+    assert nach_art["generisch"] == {f"{i}_generisch" for i in GEGENSTUECKE} | {"frost_raum_aus_sommer_generisch"}
     assert len(nach_art["pm_networks"]) + len(nach_art[None]) == REGELN_1_1
     for rid in GEGENSTUECKE:
         pm = next(r for r in werk.regeln if r["id"] == rid)

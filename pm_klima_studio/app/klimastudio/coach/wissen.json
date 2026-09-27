@@ -190,6 +190,11 @@
             "wert": "raum.ist",
             "op": "<",
             "ref": 14
+          },
+          {
+            "wert": "heizperiode.aktiv",
+            "op": "==",
+            "ref": true
           }
         ]
       },
@@ -200,6 +205,46 @@
         "typ": "steuerung",
         "aktion": "modus",
         "modus": "plan"
+      }
+    },
+    {
+      "id": "frost_raum_aus_sommer_generisch",
+      "betriebsart": "generisch",
+      "bereich": "raum",
+      "thema": "heizen",
+      "prioritaet": 1,
+      "saison": "immer",
+      "wenn": {
+        "alle": [
+          {
+            "wert": "raum.modus",
+            "op": "==",
+            "ref": "aus"
+          },
+          {
+            "wert": "wetter.min_3tage",
+            "op": "<",
+            "ref": 0
+          },
+          {
+            "wert": "raum.ist",
+            "op": "<",
+            "ref": 14
+          },
+          {
+            "wert": "heizperiode.aktiv",
+            "op": "==",
+            "ref": false
+          }
+        ]
+      },
+      "titel": "Raum ausgeschaltet bei erwartetem Frost",
+      "text": "Der Raum {raum.name} ist ausgeschaltet und hat {raum.ist} °C. Für die nächsten Tage wird Frost bis {wetter.min_3tage} °C erwartet, Klima Studio ist aber auf Sommer gestellt.",
+      "begruendung": "Ein ausgeschalteter Raum kühlt bei Frost weiter aus. Unter etwa 12 °C steigt das Risiko für Tauwasser an Außenwänden und für Frostschäden an Leitungen. Im Sommer wendet Klima Studio keine Heizpläne an; im Modus Hand heizt das Thermostat mit seinem eigenen Sollwert.",
+      "massnahme": {
+        "typ": "steuerung",
+        "aktion": "modus",
+        "modus": "hand"
       }
     },
     {

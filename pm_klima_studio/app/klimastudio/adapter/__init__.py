@@ -10,6 +10,7 @@ betriebsartspezifischen Teil.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -32,6 +33,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PM_DOMAIN = "pm_heizung"
 ERKENNUNG_TTL = 300  # wie ROOM_TTL im Server
+UNBEKANNT_TTL = 60  # unbekanntes Ergebnis (Fehler, Zeitüberschreitung) so lange merken
+ZEITLIMIT = 5.0  # Sekunden für die gesamte Erkennung
 
 # Fähigkeiten für /api/info (Oberfläche blendet danach ein und aus)
 FAEHIGKEITEN = ("freigabe", "overlay_integration", "plan_anwendung", "empfehlungen_integration", "schimmel", "luftqualitaet")
@@ -124,7 +127,10 @@ class Adapter(ABC):
 
     @abstractmethod
     async def heizperiode_anwenden(self, aktiv: bool, entitaet: str) -> None:
-        """Wirkung der Heizperiode (on) bzw. des Sommers (off) auslösen."""
+        """Wirkung der Heizperiode (on) bzw. des Sommers (off) auslösen.
+
+        Interner Zustand (``heizperiode_intern``) nimmt zusätzlich ``erstentscheid`` an: allererste
+        Entscheidung der Automatik, dabei nur den Zustand merken."""
 
     def freigabe_verknuepft(self, by_id: dict[str, dict[str, Any]], zustand: str | None) -> bool | None:
         """Ob die Freigabe-Entität mit der Integration verknüpft ist (None = unbekannt)."""
@@ -195,20 +201,40 @@ async def pm_klima_geladen(client: HAClient) -> bool | None:
 
 
 class PmKlimaErkennung:
-    """Gecachtes Ergebnis von ``pm_klima_geladen`` (``ERKENNUNG_TTL``)."""
+    """Gecachtes Ergebnis von ``pm_klima_geladen``: bekannt ``ERKENNUNG_TTL``, unbekannt (None) ``ttl_unbekannt``.
 
-    def __init__(self, client: HAClient, ttl: float = ERKENNUNG_TTL) -> None:
+    Die Erkennung dauert höchstens ``zeitlimit`` Sekunden (danach None), damit ``/api/info`` nie lange
+    blockiert; gleichzeitige Aufrufe teilen sich eine Abfrage."""
+
+    def __init__(
+        self, client: HAClient, ttl: float = ERKENNUNG_TTL, ttl_unbekannt: float = UNBEKANNT_TTL, zeitlimit: float = ZEITLIMIT
+    ) -> None:
         self.client = client
         self.ttl = ttl
+        self.ttl_unbekannt = ttl_unbekannt
+        self.zeitlimit = zeitlimit
         self._wert: tuple[float, bool | None] | None = None
+        self._lock = asyncio.Lock()
+
+    def _gueltig(self) -> bool:
+        if self._wert is None:
+            return False
+        ttl = self.ttl if self._wert[1] is not None else self.ttl_unbekannt
+        return time.monotonic() - self._wert[0] < ttl
 
     async def geladen(self, refresh: bool = False) -> bool | None:
-        if not refresh and self._wert is not None and time.monotonic() - self._wert[0] < self.ttl:
-            return self._wert[1]
-        wert = await pm_klima_geladen(self.client)
-        # Unbekannt (None) nicht cachen: beim nächsten Aufruf erneut versuchen
-        self._wert = (time.monotonic(), wert) if wert is not None else None
-        return wert
+        if not refresh and self._gueltig():
+            return self._wert[1] if self._wert else None
+        async with self._lock:
+            if not refresh and self._gueltig():
+                return self._wert[1] if self._wert else None
+            try:
+                wert = await asyncio.wait_for(pm_klima_geladen(self.client), self.zeitlimit)
+            except TimeoutError:
+                _LOGGER.info("PM Klima nicht erkennbar: keine Antwort innerhalb von %s s", self.zeitlimit)
+                wert = None
+            self._wert = (time.monotonic(), wert)
+            return wert
 
 
 def hinweis_betriebsart(betriebsart: str, geladen: bool | None) -> str | None:

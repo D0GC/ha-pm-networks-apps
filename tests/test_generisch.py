@@ -243,8 +243,9 @@ async def test_pm_modus_liest_keine_registries(studio, fake):
 
 def test_zustand_steuerbar():
     z = _zustand(FakeHA(pm_klima=False), "wohnzimmer")
-    # ab Phase 3: modus = App-Modus (plan|hand|aus), Zustand des Thermostats in hvac_modus
-    assert z["modus"] == "plan"
+    # ab Phase 3: modus = App-Modus (plan|hand|aus), Zustand des Thermostats in hvac_modus;
+    # neue Räume starten im Modus hand (Klima Studio schreibt nichts, bis Plan gewählt wird)
+    assert z["modus"] == "hand"
     assert z["hvac_modus"] == "heat"
     assert z["soll"] == 21.0
     assert z["ist"] == 20.4

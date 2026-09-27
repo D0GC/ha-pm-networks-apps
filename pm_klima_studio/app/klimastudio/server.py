@@ -123,10 +123,13 @@ class KlimaStudio:
         self.adapter = adapter_fuer(opts, client, self.store)
         self.adapter.tz = lambda: self.tz
         self.adapter.raeume_quelle = self.rooms
-        # Nur Betriebsart generisch mit plan_anwenden: Klima Studio wendet die Heizpläne selbst an
+        # Nur Betriebsart generisch: Hintergrund für Rück-Timer und (mit plan_anwenden) die Heizpläne
         self.plananwendung = self.adapter.plananwendung
         self.pm_erkennung = PmKlimaErkennung(client, ROOM_TTL)
-        self.data = DataService(client)
+        generisch = self.adapter.betriebsart == "generisch"
+        if generisch:
+            self.adapter.pm_erkennung = self.pm_erkennung  # type: ignore[attr-defined]
+        self.data = DataService(client, generisch=generisch)
         self.archive = ReportArchive(data_dir / "berichte.json")
         self.tz = ZoneInfo("Europe/Berlin")
         self._rooms: list[Room] = []
@@ -327,6 +330,9 @@ async def api_info(request: web.Request) -> web.Response:
             await ks.client.schedule_list()
     nxt = ks.scheduler.next.isoformat(timespec="minutes") if ks.scheduler and ks.scheduler.next else None
     geladen = await ks.pm_erkennung.geladen()
+    extra: dict[str, Any] = {}
+    if ks.adapter.betriebsart == "generisch":
+        extra["absenktemperatur"] = ks.opts.absenktemperatur
     return web.json_response(
         {
             "version": __version__,
@@ -344,6 +350,7 @@ async def api_info(request: web.Request) -> web.Response:
             "pm_klima_geladen": geladen,
             "faehigkeiten": ks.adapter.faehigkeiten(),
             "hinweis_betriebsart": hinweis_betriebsart(ks.adapter.betriebsart, geladen),
+            **extra,
         }
     )
 
@@ -359,6 +366,16 @@ async def api_current(request: web.Request) -> web.Response:
         rooms,
         {"empfehlung": ks.opts.empfehlung, "aussentemperatur": ks.opts.aussentemperatur, "aussenfeuchte": ks.opts.aussenfeuchte},
     )
+    if ks.adapter.betriebsart == "generisch":
+        # nur generisch: App-Modus (plan | hand | aus) und Plan-Soll je Raum
+        by_id = {s["entity_id"]: s for s in await ks.client.get_states() if "entity_id" in s}
+        await ks.adapter.vorbereiten(rooms, by_id)
+        for room in rooms:
+            z = result["raeume"].get(room.raum)
+            if z is not None:
+                zustand = ks.adapter.raum_zustand(room, by_id)
+                z["app_modus"] = zustand["modus"]
+                z["plan_soll"] = zustand["plan_soll"]
     return web.json_response(result)
 
 

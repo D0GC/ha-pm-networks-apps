@@ -185,12 +185,16 @@ class Room:
     temperatur: str | None = None
     # Absenktemperatur des Raums (Override ``absenk``, nur Betriebsart generisch); fehlt in to_dict, wenn leer
     absenk: float | None = None
+    # Weitere Thermostate im Bereich (nur Betriebsart generisch, nur angezeigt); fehlt in to_dict, wenn leer
+    climate_weitere: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         for key in ("temperatur", "absenk"):
             if d[key] is None:
                 del d[key]
+        if not d["climate_weitere"]:
+            del d["climate_weitere"]
         return d
 
     def entities(self) -> list[str]:

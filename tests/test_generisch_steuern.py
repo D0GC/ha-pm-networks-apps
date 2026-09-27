@@ -11,6 +11,7 @@ import pytest
 
 from conftest import WISSEN_TEST
 from fake_ha import TZ, DienstFehler, FakeHA
+from klimastudio.adapter.generisch import HINWEIS_PLAN_AUS
 from klimastudio.coach import store as store_mod
 from klimastudio.coach.store import CoachStore
 from klimastudio.config import Options, Room
@@ -35,11 +36,24 @@ class Uhr:
         self.t = self.t.astimezone(TZ).replace(hour=stunde, minute=minute).astimezone(UTC)
 
 
+PLAN_RAEUME = {"wohnzimmer": WZ, "kuche": KU, "gaestezimmer_heizung": GZ}
+
+
+async def plan_waehlen(ks: KlimaStudio, raeume: dict[str, str] = PLAN_RAEUME) -> None:
+    """Räume wie nach ausdrücklicher Wahl auf Plan stellen (neue Räume starten im Modus hand)."""
+    for raum, eid in raeume.items():
+        await ks.store.app_raum_setzen(raum, {"modus": "plan", "climate": eid})
+    ks.adapter._app = None
+
+
 @pytest.fixture
-def uhr(studio_generisch, fake_generisch) -> Uhr:
+async def uhr(studio_generisch, fake_generisch) -> Uhr:
+    """Feste Uhr; Wohnzimmer, Küche und Gästezimmer im Modus Plan, Küche im Zustand heat."""
     u = Uhr(T0)
     studio_generisch.adapter.uhr = u
     fake_generisch.uhr = u
+    fake_generisch.generisch[KU]["state"] = "heat"
+    await plan_waehlen(studio_generisch)
     return u
 
 
@@ -150,7 +164,9 @@ async def test_plan_anwenden_aus(ha_client_generisch, fake_generisch, tmp_path):
     opts = Options.from_dict({"betriebsart": "generisch", "plan_anwenden": False})
     ks = KlimaStudio(opts, ha_client_generisch, data_dir=tmp_path / "b", wissen_pfad=WISSEN_TEST)
     try:
-        assert ks.plananwendung is None
+        # Hintergrund läuft trotzdem (Rück-Timer), nur die Heizpläne werden nicht angewendet
+        assert ks.plananwendung is not None
+        assert ks.adapter.plan_aktiv is False
         assert ks.adapter.faehigkeiten()["plan_anwendung"] is False
         # Modus plan wird trotzdem angenommen: ausgeschalteter Raum wird eingeschaltet, kein Plan-Soll
         fake_generisch.generisch[WZ]["state"] = "off"
@@ -160,8 +176,40 @@ async def test_plan_anwenden_aus(ha_client_generisch, fake_generisch, tmp_path):
         assert fake_generisch.generisch[WZ]["state"] == "heat"
         assert not rufe(fake_generisch, "set_temperature")
         assert ks.adapter.app("wohnzimmer")["modus"] == "plan"
+        await ks.plananwendung.takt()
+        assert not rufe(fake_generisch, "set_temperature")
+        by_id = {s["entity_id"]: s for s in fake_generisch.state_list()}
+        assert ks.adapter.raum_zustand(room, by_id)["plan_hinweis"] == HINWEIS_PLAN_AUS
     finally:
         ks.store.close()
+
+
+async def test_rueck_timer_ohne_plananwendung(ha_client_generisch, fake_generisch, tmp_path):
+    """Befund 1: Boost und Overlay laufen auch mit plan_anwenden=false ab (Hintergrund läuft immer)."""
+    opts = Options.from_dict({"betriebsart": "generisch", "plan_anwenden": False})
+    ks = KlimaStudio(opts, ha_client_generisch, data_dir=tmp_path / "c", wissen_pfad=WISSEN_TEST)
+    u = Uhr(T0)
+    ks.adapter.uhr = u
+    fake_generisch.uhr = u
+    try:
+        await ks.start()
+        assert ks.plananwendung.laeuft
+        await ks.plananwendung.stop()
+        room = await ks.room("wohnzimmer")
+        await ks.adapter.aktion(room, {"aktion": "modus", "modus": "hand"})
+        await ks.adapter.aktion(room, {"aktion": "boost", "dauer": 15})
+        assert soll(fake_generisch, WZ) == 25.0
+        await ks.adapter.aktion(await ks.room("kuche"), {"aktion": "modus", "modus": "plan"})
+        await ks.adapter.aktion(await ks.room("kuche"), {"aktion": "overlay", "temperatur": 23, "dauer": 30})
+        assert soll(fake_generisch, KU) == 23.0
+        u.weiter(minutes=31)
+        await ks.plananwendung.takt()
+        assert soll(fake_generisch, WZ) == 21.0  # Wert vor dem Boost
+        assert soll(fake_generisch, KU) == 20.0  # Wert vor dem Overlay (kein Plan-Soll)
+        assert ks.adapter.app("wohnzimmer")["boost_bis"] is None
+        assert ks.adapter.app("kuche")["overlay_bis"] is None
+    finally:
+        await ks.stop()
 
 
 async def test_start_stop_plananwendung(studio_generisch, fake_generisch, uhr):
@@ -343,9 +391,11 @@ async def test_boost_ohne_preset(app_client_generisch, studio_generisch, fake_ge
     await takt(studio_generisch)
     st, d = await post(app_client_generisch, "wohnzimmer", {"aktion": "boost", "dauer": 15})
     assert st == 200, d
-    assert rufe(fake_generisch)[-1] == ("climate", "set_temperature", {"entity_id": WZ, "temperature": 30})
+    # ohne Preset: höchstens 25 °C (max_temp 30)
+    assert rufe(fake_generisch)[-1] == ("climate", "set_temperature", {"entity_id": WZ, "temperature": 25})
+    assert d["raum"]["boost_temp"] == 25.0
     await takt(studio_generisch)
-    assert soll(fake_generisch, WZ) == 30.0  # keine Handänderung erkannt, Plan pausiert
+    assert soll(fake_generisch, WZ) == 25.0  # keine Handänderung erkannt, Plan pausiert
     uhr.weiter(minutes=16)
     await takt(studio_generisch)
     assert soll(fake_generisch, WZ) == 17.0
@@ -353,7 +403,7 @@ async def test_boost_ohne_preset(app_client_generisch, studio_generisch, fake_ge
     await post(app_client_generisch, "wohnzimmer", {"aktion": "modus", "modus": "hand"})
     await post(app_client_generisch, "wohnzimmer", {"aktion": "temperatur", "temperatur": 20.5})
     st, d = await post(app_client_generisch, "wohnzimmer", {"aktion": "boost", "dauer": 5})
-    assert soll(fake_generisch, WZ) == 30.0
+    assert soll(fake_generisch, WZ) == 25.0
     st, d = await post(app_client_generisch, "wohnzimmer", {"aktion": "zurueck"})
     assert st == 200, d
     assert soll(fake_generisch, WZ) == 20.5
@@ -501,7 +551,7 @@ async def test_sommer_aus_und_rueckkehr(app_client_generisch, studio_generisch, 
     assert fake_generisch.generisch[GZ]["state"] == "off"
     assert fake_generisch.generisch[WZ]["state"] == "heat"  # Hand-Raum unberührt
     assert not rufe(fake_generisch, eid=WZ)
-    assert studio_generisch.adapter.app("kuche")["hvac_vor_sommer"] == "auto"
+    assert studio_generisch.adapter.app("kuche")["hvac_vor_sommer"] == "heat"
     z = (await (await app_client_generisch.get("/api/steuerung")).json())["raeume"]
     assert (z["kuche"]["modus"], z["kuche"]["hvac_modus"], z["kuche"]["grund"]) == ("plan", "off", "sommer")
     # Sommer-Pause: keine Plananwendung
@@ -514,7 +564,7 @@ async def test_sommer_aus_und_rueckkehr(app_client_generisch, studio_generisch, 
     d = await resp.json()
     assert resp.status == 200, d
     assert (d["aktiv"], d["spiegel"]) == (True, "on")
-    assert fake_generisch.generisch[KU]["state"] == "auto"
+    assert fake_generisch.generisch[KU]["state"] == "heat"
     assert fake_generisch.generisch[GZ]["state"] == "heat"
     assert soll(fake_generisch, KU) == 21.0
     assert soll(fake_generisch, WZ) == 20.0
@@ -531,11 +581,13 @@ async def test_sommer_nur_pausieren(app_client_generisch, studio_generisch, fake
     fake_generisch.service_calls.clear()
     resp = await app_client_generisch.post("/api/heizperiode", json={"modus": "sommer"})
     assert resp.status == 200
-    assert rufe(fake_generisch) == []
+    # zu Beginn der Pause einmal die Absenktemperatur (Wohnzimmer und Küche stehen schon darauf)
+    assert rufe(fake_generisch) == [("climate", "set_temperature", {"entity_id": GZ, "temperature": 17})]
+    fake_generisch.service_calls.clear()
     uhr.lokal(16, 0)
     await takt(studio_generisch)
     assert rufe(fake_generisch) == []
-    assert fake_generisch.generisch[KU]["state"] == "auto"
+    assert fake_generisch.generisch[KU]["state"] == "heat"
     resp = await app_client_generisch.post("/api/heizperiode", json={"modus": "heizperiode"})
     assert resp.status == 200
     assert soll(fake_generisch, KU) == 21.0
@@ -546,7 +598,7 @@ async def test_sommer_raum_bereits_aus_bleibt_aus(app_client_generisch, studio_g
     await app_client_generisch.post("/api/heizperiode", json={"modus": "sommer"})
     await app_client_generisch.post("/api/heizperiode", json={"modus": "heizperiode"})
     assert fake_generisch.generisch[GZ]["state"] == "off"
-    assert fake_generisch.generisch[KU]["state"] == "auto"
+    assert fake_generisch.generisch[KU]["state"] == "heat"
 
 
 async def test_sommer_thermostat_nicht_verfuegbar(app_client_generisch, studio_generisch, fake_generisch, uhr):
@@ -568,10 +620,20 @@ async def test_heizperiode_automatik_generisch(studio_generisch, fake_generisch,
     ergebnis = await studio_generisch.heizperiode.pruefen()
     assert ergebnis["aktiv"] is False
     assert studio_generisch.adapter.pause is True
-    assert fake_generisch.generisch[KU]["state"] == "off"
+    # allererste Entscheidung der Automatik: nur merken, nichts ausschalten
+    assert fake_generisch.generisch[KU]["state"] == "heat"
+    assert not rufe(fake_generisch, "set_hvac_mode")
     status = await studio_generisch.heizperiode.status()
     assert status["vorhanden"] is False  # Spiegel-Entität ist keine Voraussetzung
     assert status["abweichung"] is None
+    # späterer Wechsel Heizperiode -> Sommer: jetzt wird ausgeschaltet
+    fake_generisch.statistik["sensor.aussentemperatur"] = lambda ts: 2.0
+    studio_generisch.heizperiode._mittel = None  # Tagesmittel neu lesen
+    assert (await studio_generisch.heizperiode.pruefen(erzwingen=True))["aktiv"] is True
+    fake_generisch.statistik["sensor.aussentemperatur"] = lambda ts: 20.0
+    studio_generisch.heizperiode._mittel = None
+    assert (await studio_generisch.heizperiode.pruefen(erzwingen=True))["aktiv"] is False
+    assert fake_generisch.generisch[KU]["state"] == "off"
     # Hintergrundprüfung läuft generisch
     studio_generisch.heizperiode.start()
     assert studio_generisch.heizperiode._task is not None
@@ -602,7 +664,7 @@ def test_store_migration_v1(tmp_path):
     conn.close()
     st = CoachStore(pfad)
     try:
-        assert st.schema_version() == store_mod.SCHEMA_VERSION == 2
+        assert st.schema_version() == store_mod.SCHEMA_VERSION == 3
         assert st.app_raeume_lesen() == {}
         assert st.einstellung_lesen("heizperiode") == {"modus": "sommer"}
     finally:

@@ -1,13 +1,21 @@
 """Betriebsart ``generisch``: Standard-climate-Entitäten ohne die Integration PM Klima.
 
 Räume ergeben sich aus den Bereichen (Areas) von Home Assistant: je Bereich ein Raum mit dem
-ersten Thermostat (sortiert) als Raumthermostat, Sensoren des Bereichs nach ``device_class``.
-Thermostate ohne Bereich bilden einen eigenen Raum (Kürzel aus der object_id).
+ersten Thermostat (sortiert) als Raumthermostat, Sensoren des Bereichs (zuerst die im Bereich
+eingetragenen Temperatur-/Feuchtesensoren, dann nach ``device_class``). Thermostate ohne Bereich
+bilden einen eigenen Raum (Kürzel aus der object_id). Entitäten von PM Klima werden nie als
+Thermostat verwendet; Better-Thermostat-Hüllen haben Vorrang vor den Thermostaten ihres Bereichs.
+
+Mehrere Thermostate in einem Bereich: gesteuert wird nur das Raumthermostat; die weiteren stehen
+in ``climate_weitere`` und als Hinweis im Raumzustand (bewusst kein Gruppenschalten: jedes Gerät hat
+eigene Modi, Grenzen und Rückmeldungen; Handänderung und Übernahme wären nicht eindeutig).
 
 Steuerung über Standard-Dienste ``climate.*``. Die App führt je Raum einen eigenen Zustand
 (SQLite-Tabelle ``app_raeume``): Modus ``plan`` (Klima Studio wendet den Heizplan an, siehe
-``plananwendung``), ``hand`` oder ``aus``, Rück-Timer für Overlay und Boost, zuletzt geschriebener
-Sollwert und gemerkte hvac-Modi. Die Heizperiode ist ein interner Zustand (Sommer-Pause).
+``plananwendung``), ``hand`` (Standard für neue Räume: die App schreibt nichts) oder ``aus``,
+Rück-Timer für Overlay und Boost, zuletzt geschriebener und übernommener Sollwert, gemerkte
+hvac-Modi und die climate-Entität, zu der der Zustand gehört. Die Heizperiode ist ein interner
+Zustand (Sommer-Pause).
 """
 
 from __future__ import annotations
@@ -27,11 +35,12 @@ from ..coach import ki
 from ..coach.store import APP_RAUM_FELDER
 from ..config import Options, Room, _name_for, _pick_by_value, overrides_anwenden
 from ..ha_client import HAClient, HAError
-from ..plananwendung import Plananwendung, PlanInfo, PlanQuelle, iso, plan_info, zeit
+from ..plananwendung import Plananwendung, PlanInfo, PlanQuelle, absenk_fuer, iso, plan_info, zeit
 from . import FAEHIGKEITEN, Adapter
 
 if TYPE_CHECKING:
     from ..coach.store import CoachStore
+    from . import PmKlimaErkennung
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +55,32 @@ NICHT_VERFUEGBAR = ("unavailable", "unknown")
 FENSTER_KLASSEN = ("window", "door", "opening")
 SLUG_UNGUELTIG_RE = re.compile(r"[^a-z0-9_]+")
 PAUSE = "plan_pause"  # Einstellung: Sommer-Pause der Plananwendung
+PM_PLATTFORM = "pm_heizung"
+BT_PLATTFORM = "better_thermostat"
+# Kühl- und Lüftungsbetrieb: nie mit dem Heizplan beschreiben, im Sommer nicht ausschalten
+KUEHLEN = ("cool", "dry", "fan_only", "heat_cool")
+BOOST_MAX = 25.0  # Boost ohne Preset: höchstens 25 °C (bzw. max_temp des Thermostats)
+SOMMER_MAX_VERSUCHE = 5
+TIMER_FELDER: dict[str, Any] = dict.fromkeys(("overlay_bis", "overlay_temp", "boost_bis", "boost_art", "vor_temp", "vor_preset"))
+
+HINWEIS_GERAETEPROGRAMM = (
+    "Geräteprogramm aktiv: Das Thermostat steht auf {modus}. Klima Studio wendet den Heizplan nur im Modus heat an."
+)
+HINWEIS_KUEHLEN = "Das Gerät kühlt oder lüftet ({modus}). Klima Studio wendet den Heizplan darauf nicht an."
+HINWEIS_PLAN_AUS = "Die Plananwendung ist in den App-Optionen ausgeschaltet (plan_anwenden)."
+HINWEIS_WEITERE = (
+    "Im Bereich gibt es weitere Thermostate ({weitere}). Klima Studio steuert nur {climate}. Fassen Sie die Geräte "
+    "z. B. mit Better Thermostat zusammen oder weisen Sie das Thermostat über raeume_override zu."
+)
+HINWEIS_BT = (
+    "Better Thermostat {climate} steuert diesen Raum. Die Thermostate {quellen} im selben Bereich gelten als seine "
+    "Quellgeräte und werden nicht direkt gesteuert."
+)
+HINWEIS_TADO = (
+    "tado: Die Standard-Übersteuerung ist {typ} statt MANUAL. Werte von Klima Studio enden dann mit dem nächsten "
+    "tado-Zeitblock. Stellen Sie in den Optionen der tado-Integration die Übersteuerung auf Manuell."
+)
+HINWEIS_NICHT_UEBERNOMMEN = "Das Thermostat hat den zuletzt geschriebenen Sollwert {wert} °C nicht übernommen."
 
 
 def _slug(text: str) -> str:
@@ -76,6 +111,7 @@ def _registry_eintrag(e: dict[str, Any]) -> dict[str, Any]:
     """Eintrag aus ``list`` oder ``list_for_display`` (bereits umgesetzt) vereinheitlichen."""
     return {
         "entity_id": e.get("entity_id"),
+        "platform": e.get("platform") or e.get("pl") or None,
         "area_id": e.get("area_id") or None,
         "device_id": e.get("device_id") or None,
         "hidden": bool(e.get("hidden") or e.get("hidden_by")),
@@ -96,30 +132,60 @@ class GenerischAdapter(Adapter):
         #: serialisiert Aktionen, Plananwendung und Heizperiode (App-Zustand, Schreibbefehle)
         self.lock = asyncio.Lock()
         self.quelle = PlanQuelle(client, lambda: self.uhr())
-        self.plananwendung = Plananwendung(self) if opts.plan_anwenden else None
+        # Der Hintergrund läuft immer (Rück-Timer); plan_anwenden schaltet nur die Heizpläne ab
+        self.plananwendung = Plananwendung(self)
+        #: Erkennung PM Klima (vom Server gesetzt): Entitäten mit praefix_klima ausschließen, wenn geladen
+        self.pm_erkennung: PmKlimaErkennung | None = None
+        self._pm_geladen: bool | None = None
+        #: zuletzt erfolgreich gelesene Registrierungen (bei Fehlern weiterverwendet)
+        self._registries: dict[str, list[dict[str, Any]]] = {}
+        #: Hinweise der Raumerkennung je Raum (mehrere Thermostate, Better Thermostat)
+        self._raum_hinweise: dict[str, list[str]] = {}
+        #: Fehlversuche des Sommer-Abgleichs je Raum
+        self._sommer_fehler: dict[str, int] = {}
+
+    @property
+    def plan_aktiv(self) -> bool:
+        """Heizpläne anwenden (Option ``plan_anwenden``)."""
+        return bool(self.opts.plan_anwenden)
 
     # ------------------------------------------------------------- Räume
 
     async def registries_laden(self) -> dict[str, list[dict[str, Any]]]:
-        """Registrierungen lesen; fehlt eine, werden Räume ohne sie (aus der object_id) gebildet."""
-        out: dict[str, list[dict[str, Any]]] = {"areas": [], "entities": [], "devices": []}
-        try:
-            out["areas"] = await self.client.area_registry_list()
-        except HAError as err:
-            _LOGGER.warning("Bereiche nicht lesbar, Räume ohne Bereichszuordnung: %s", err)
-        try:
-            out["entities"] = await self.client.entity_registry_list_for_display()
-        except HAError as err:
-            _LOGGER.debug("entity_registry/list_for_display nicht möglich (%s), nutze list", err)
+        """Registrierungen lesen. Scheitert eine, gilt die zuletzt gelesene weiter; ohne sie werden Räume
+        ohne diese Registrierung (aus der object_id) gebildet."""
+        out: dict[str, list[dict[str, Any]]] = {}
+
+        async def entitaeten() -> list[dict[str, Any]]:
             try:
-                out["entities"] = await self.client.entity_registry_list()
-            except HAError as err2:
-                _LOGGER.warning("Entitätsregistrierung nicht lesbar: %s", err2)
-        try:
-            out["devices"] = await self.client.device_registry_list()
-        except HAError as err:
-            _LOGGER.warning("Geräteregistrierung nicht lesbar: %s", err)
+                return await self.client.entity_registry_list_for_display()
+            except HAError as err:
+                _LOGGER.debug("entity_registry/list_for_display nicht möglich (%s), nutze list", err)
+                return await self.client.entity_registry_list()
+
+        for key, laden, name in (
+            ("areas", self.client.area_registry_list, "Bereiche"),
+            ("entities", entitaeten, "Entitätsregistrierung"),
+            ("devices", self.client.device_registry_list, "Geräteregistrierung"),
+        ):
+            try:
+                out[key] = await laden()
+                self._registries[key] = out[key]
+            except HAError as err:
+                if key in self._registries:
+                    _LOGGER.warning("%s nicht lesbar, verwende die zuletzt gelesenen: %s", name, err)
+                    out[key] = self._registries[key]
+                else:
+                    _LOGGER.warning("%s nicht lesbar: %s", name, err)
+                    out[key] = []
         return out
+
+    async def raeume(self, states: list[dict[str, Any]]) -> list[Room]:
+        registries = await self.registries_laden()
+        if self.pm_erkennung is not None:
+            self._pm_geladen = await self.pm_erkennung.geladen()
+        self.quelle.ids_leeren()
+        return self.raeume_erkennen(states, registries)
 
     def raeume_erkennen(self, states: list[dict[str, Any]], registries: dict[str, list[dict[str, Any]]]) -> list[Room]:
         by_id = {s["entity_id"]: s for s in states if "entity_id" in s}
@@ -141,6 +207,12 @@ class GenerischAdapter(Adapter):
         def dc(eid: str) -> str | None:
             return (by_id[eid].get("attributes") or {}).get("device_class")
 
+        def plattform(eid: str) -> str | None:
+            return (ents.get(eid) or {}).get("platform")
+
+        def geraet(eid: str) -> str | None:
+            return (ents.get(eid) or {}).get("device_id")
+
         je_bereich: dict[str, list[str]] = {}
         for eid in sorted(by_id):
             if eid.startswith(("sensor.", "binary_sensor.")):
@@ -148,13 +220,38 @@ class GenerischAdapter(Adapter):
                 if b:
                     je_bereich.setdefault(b, []).append(eid)
 
+        def ausgeschlossen(eid: str) -> bool:
+            if (ents.get(eid) or {}).get("hidden"):
+                return True
+            if plattform(eid) == PM_PLATTFORM:
+                return True  # Entitäten von PM Klima steuert die Integration selbst
+            return bool(self._pm_geladen and self.opts.praefix_klima and eid.startswith(self.opts.praefix_klima))
+
+        kandidaten = sorted(e for e in by_id if e.startswith("climate.") and not ausgeschlossen(e))
+        # Better Thermostat: Hülle bevorzugen, Thermostate im selben Bereich bzw. Gerät gelten als Quellgeräte
+        bt = [e for e in kandidaten if plattform(e) == BT_PLATTFORM]
+        quellen: dict[str, list[str]] = {}
+        for h in bt:
+            hb, hg = bereich(h), geraet(h)
+            for e in kandidaten:
+                if e in bt:
+                    continue
+                if (hb is not None and bereich(e) == hb) or (hg is not None and geraet(e) == hg):
+                    quellen.setdefault(h, []).append(e)
+        alle_quellen = {e for liste in quellen.values() for e in liste}
+        for h, liste in quellen.items():
+            _LOGGER.warning(
+                "Better Thermostat %s: %s im selben Bereich/Gerät als Quellgeräte angenommen und nicht direkt gesteuert",
+                h,
+                ", ".join(liste),
+            )
+
         rooms: dict[str, Room] = {}
         raum_bereich: dict[str, str | None] = {}
-        # Thermostate mit Bereich zuerst: Bereichsräume behalten ihr Kürzel bei Namensgleichheit
-        klima = sorted(
-            (bereich(e) is None, e) for e in by_id if e.startswith("climate.") and not (ents.get(e) or {}).get("hidden")
-        )
-        for _, eid in klima:
+        hinweise: dict[str, list[str]] = {}
+        # Thermostate mit Bereich zuerst, Better-Thermostat-Hüllen vor anderen Thermostaten des Bereichs
+        klima = sorted((bereich(e) is None, e not in bt, e) for e in kandidaten if e not in alle_quellen)
+        for _, _, eid in klima:
             attrs = by_id[eid].get("attributes") or {}
             b = bereich(eid)
             if b:
@@ -166,11 +263,12 @@ class GenerischAdapter(Adapter):
             if slug in rooms:
                 if b is not None and raum_bereich.get(slug) == b:
                     _LOGGER.info(
-                        "Bereich %s hat mehrere Thermostate, Raumthermostat ist %s (%s ignoriert; änderbar über raeume_override)",
+                        "Bereich %s: mehrere Thermostate, Raumthermostat ist %s (%s nur angezeigt; änderbar mit raeume_override)",
                         b,
                         rooms[slug].climate,
                         eid,
                     )
+                    rooms[slug].climate_weitere.append(eid)
                     continue
                 n = 2
                 while f"{slug}_{n}" in rooms:
@@ -178,6 +276,8 @@ class GenerischAdapter(Adapter):
                 slug = f"{slug}_{n}"
             rooms[slug] = Room(raum=slug, name=name, climate=eid)
             raum_bereich[slug] = b
+            if eid in quellen:
+                hinweise.setdefault(slug, []).append(HINWEIS_BT.format(climate=eid, quellen=", ".join(quellen[eid])))
 
         humidity = [e for e in by_id if e.startswith("sensor.") and dc(e) == "humidity"]
         co2 = [e for e in by_id if e.startswith("sensor.") and dc(e) == "carbon_dioxide"]
@@ -192,20 +292,54 @@ class GenerischAdapter(Adapter):
                 return eigen
             return [e for e in kandidaten if slug in e.split(".", 1)[1] and not bereich(e)]
 
+        def bereichssensor(b: str | None, feld: str) -> str | None:
+            """Im Bereich eingetragener Sensor (``temperature_entity_id``/``humidity_entity_id``), falls vorhanden."""
+            eid = (areas.get(b or "") or {}).get(feld)
+            return eid if isinstance(eid, str) and eid in by_id else None
+
         for slug, room in rooms.items():
             attrs = (by_id.get(room.climate or "") or {}).get("attributes") or {}
             b = raum_bereich.get(slug)
-            room.feuchte = _pick_by_value(auswahl(humidity, slug, b), by_id, an.to_float(attrs.get("current_humidity")))
+            room.feuchte = bereichssensor(b, "humidity_entity_id") or _pick_by_value(
+                auswahl(humidity, slug, b), by_id, an.to_float(attrs.get("current_humidity"))
+            )
             cands = sorted(auswahl(co2, slug, b))
             room.co2 = cands[0] if cands else None
             cands = sorted(auswahl(fenster, slug, b))
             room.fenster = cands[0] if cands else None
             temps = sorted(e for e in je_bereich.get(b or "", []) if e.startswith("sensor.") and dc(e) == "temperature")
-            room.temperatur = temps[0] if temps else None
+            room.temperatur = bereichssensor(b, "temperature_entity_id") or (temps[0] if temps else None)
             sched = f"{self.opts.praefix_heizplan}{slug}"
             room.schedule = sched if sched.startswith("schedule.") and sched in by_id else None
 
-        return overrides_anwenden(rooms, self.opts)
+        ergebnis = self._eindeutig(overrides_anwenden(rooms, self.opts))
+        for room in ergebnis:
+            room.climate_weitere = [e for e in room.climate_weitere if e != room.climate]
+            if room.climate_weitere:
+                hinweise.setdefault(room.raum, []).append(
+                    HINWEIS_WEITERE.format(weitere=", ".join(room.climate_weitere), climate=room.climate)
+                )
+        self._raum_hinweise = hinweise
+        return ergebnis
+
+    def _eindeutig(self, rooms: list[Room]) -> list[Room]:
+        """Eine climate-Entität gehört zu genau einem Raum: Räume mit ausdrücklichem Override ``climate`` haben
+        Vorrang, sonst der erste Raum. Automatisch erkannte Räume ohne Thermostat entfallen dann."""
+        ausdruecklich = {str(ov.get("raum", "")).strip().lower() for ov in self.opts.raeume if isinstance(ov.get("climate"), str)}
+        vergeben: dict[str, str] = {}
+        for room in sorted(rooms, key=lambda r: r.raum not in ausdruecklich):
+            if room.climate and room.climate in vergeben:
+                _LOGGER.warning(
+                    "Thermostat %s ist Raum %s und %s zugeordnet; gesteuert wird es nur in %s",
+                    room.climate,
+                    vergeben[room.climate],
+                    room.raum,
+                    vergeben[room.climate],
+                )
+                room.climate = None
+            elif room.climate:
+                vergeben[room.climate] = room.raum
+        return [r for r in rooms if r.climate or r.raum in {str(o.get("raum", "")).strip().lower() for o in self.opts.raeume}]
 
     def raum_faehigkeiten(self, room: Room, by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
         cl = by_id.get(room.climate or "")
@@ -286,12 +420,39 @@ class GenerischAdapter(Adapter):
             "steuerbar_grund": f["grund"],
             "soll_bereich": {"min": low, "max": high} if f["bereich"] else None,
             "faehigkeiten": {k: f[k] for k in ("modi", "presets", "boost", "aus")},
-            # Wählbare App-Modi und Art des Boosts (Preset boost oder Höchsttemperatur mit Timer)
+            # Wählbare App-Modi und Art des Boosts (Preset boost oder Temperatur mit Timer)
             "modi": [m for m in st.MODI_GENERISCH if m != "aus" or f["aus"]],
             "boost_art": "preset" if f["boost"] else "temperatur",
+            "boost_temp": None if f["boost"] else self.boost_temp(attrs),
             "sommer_pause": self.pause,
-            "plan_anwendung": self.plananwendung is not None,
+            "plan_anwendung": self.plan_aktiv,
+            # Warum der Heizplan (gerade) nicht angewendet wird; None = keine Einschränkung
+            "plan_hinweis": self._plan_hinweis(a, cl, info),
+            # Weitere Hinweise zum Raum (mehrere Thermostate, Better Thermostat, tado, nicht übernommen)
+            "hinweise": self._hinweise(room, a, attrs),
+            "climate_weitere": list(room.climate_weitere),
+            "nicht_uebernommen": int(a.get("nachgeschrieben") or 0) >= 2,
         }
+
+    def _plan_hinweis(self, a: dict[str, Any], cl: dict[str, Any], info: PlanInfo | None) -> str | None:
+        zustand = cl.get("state")
+        if a["modus"] == "plan":
+            if not self.plan_aktiv:
+                return HINWEIS_PLAN_AUS
+            if zustand in KUEHLEN:
+                return HINWEIS_KUEHLEN.format(modus=zustand)
+            if zustand not in ("heat", "off", None, *NICHT_VERFUEGBAR):
+                return HINWEIS_GERAETEPROGRAMM.format(modus=zustand)
+        return info.hinweis if info else None
+
+    def _hinweise(self, room: Room, a: dict[str, Any], attrs: dict[str, Any]) -> list[str]:
+        out = list(self._raum_hinweise.get(room.raum) or [])
+        typ = attrs.get("default_overlay_type")
+        if isinstance(typ, str) and typ and typ.upper() != "MANUAL":
+            out.append(HINWEIS_TADO.format(typ=typ))
+        if int(a.get("nachgeschrieben") or 0) >= 2 and a.get("geschrieben") is not None:
+            out.append(HINWEIS_NICHT_UEBERNOMMEN.format(wert=self.fmt(a["geschrieben"])))
+        return out
 
     def _grund(self, a: dict[str, Any]) -> str:
         if a["modus"] == "aus":
@@ -320,13 +481,21 @@ class GenerischAdapter(Adapter):
         return self._app
 
     def app(self, raum: str) -> dict[str, Any]:
-        """App-Zustand eines Raums (Kopie; Standard: Modus plan ohne Timer)."""
+        """App-Zustand eines Raums (Kopie; Standard: Modus hand ohne Timer)."""
         return {**APP_RAUM_FELDER, **(self._laden().get(raum) or {})}
 
-    async def app_speichern(self, raum: str, a: dict[str, Any]) -> None:
-        self._laden()[raum] = {k: a.get(k, v) for k, v in APP_RAUM_FELDER.items()}
+    async def app_speichern(self, room: Room, a: dict[str, Any]) -> None:
+        """App-Zustand speichern; er gehört zur aktuellen climate-Entität des Raums."""
+        if room.climate:
+            a["climate"] = room.climate
+        self._laden()[room.raum] = {k: a.get(k, v) for k, v in APP_RAUM_FELDER.items()}
         if self.store is not None:
-            await self.store.app_raum_setzen(raum, a)
+            await self.store.app_raum_setzen(room.raum, a)
+
+    async def _app_verwerfen(self, raum: str) -> None:
+        self._laden().pop(raum, None)
+        if self.store is not None:
+            await self.store.app_raum_loeschen(raum)
 
     @property
     def pause(self) -> bool:
@@ -334,11 +503,62 @@ class GenerischAdapter(Adapter):
         self._laden()
         return bool(self._pause)
 
+    def pause_gespeichert(self) -> bool:
+        """Gibt es bereits einen gespeicherten Zustand der Sommer-Pause?"""
+        return self.store is not None and self.store.einstellung_lesen(PAUSE) is not None
+
     async def pause_setzen(self, sommer: bool) -> None:
         self._laden()
         self._pause = sommer
         if self.store is not None:
             await self.store.einstellung_setzen(PAUSE, {"sommer": sommer, "seit": iso(self.uhr())})
+
+    async def zustand_abgleichen(self, rooms: list[Room], by_id: dict[str, dict[str, Any]]) -> None:
+        """App-Zustand an die Räume anpassen (Aufrufer hält ``lock``).
+
+        * Zustand ohne climate-Entität (ältere Version): der aktuellen zuordnen.
+        * Raumthermostat geändert: Timer am bisherigen Thermostat zurücksetzen, Zustand verwerfen.
+        * Raum nicht mehr vorhanden: laufende Timer zurücksetzen und löschen (Modus bleibt gespeichert).
+        """
+        if not rooms:
+            return  # ohne Raumliste (z. B. Fehler beim Lesen) nichts verwerfen
+        je_raum = {r.raum: r for r in rooms}
+        for raum, z in list(self._laden().items()):
+            room = je_raum.get(raum)
+            try:
+                if room is not None and room.climate:
+                    if not z.get("climate"):
+                        await self.app_speichern(room, dict(z))
+                    elif z["climate"] != room.climate:
+                        await self._timer_verwerfen(Room(raum=raum, name=room.name, climate=z["climate"]), dict(z), by_id)
+                        await self._app_verwerfen(raum)
+                        await self.protokoll(
+                            room,
+                            f"Raumthermostat geändert ({z['climate']} → {room.climate}), App-Zustand zurückgesetzt",
+                            {"alt": z["climate"], "neu": room.climate, "anlass": "thermostat_geaendert"},
+                        )
+                elif room is None and (z.get("overlay_bis") or z.get("boost_bis")):
+                    alt = Room(raum=raum, name=raum, climate=z.get("climate"))
+                    neu = dict(z)
+                    await self._timer_verwerfen(alt, neu, by_id)
+                    self._laden()[raum] = {k: neu.get(k, v) for k, v in APP_RAUM_FELDER.items()}
+                    if self.store is not None:
+                        await self.store.app_raum_setzen(raum, neu)
+                    await self.protokoll(alt, "Raum nicht mehr vorhanden, zeitweise Einstellung beendet", {"anlass": "verwaist"})
+            except HAError as err:
+                _LOGGER.warning("App-Zustand %s nicht abgeglichen: %s", raum, err)
+
+    async def _timer_verwerfen(self, room: Room, a: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> None:
+        """Overlay/Boost beenden; existiert das Thermostat noch, Preset und Sollwert davor wiederherstellen."""
+        cl = by_id.get(room.climate or "")
+        if cl is not None and (a.get("overlay_bis") or a.get("boost_bis")):
+            attrs = cl.get("attributes") or {}
+            an_ = cl.get("state") not in ("off", None, *NICHT_VERFUEGBAR)
+            vor = a.get("vor_temp")
+            await self._boost_beenden(room, a, attrs, an_)
+            if an_ and vor is not None:
+                await self.soll_schreiben(room, a, vor, attrs)
+        a.update(TIMER_FELDER)
 
     # ------------------------------------------------------------- Heizpläne
 
@@ -383,6 +603,18 @@ class GenerischAdapter(Adapter):
         v = round(wert / schritt) * schritt
         return round(min(max(v, lo), hi), 2)
 
+    @staticmethod
+    def toleranz(attrs: dict[str, Any]) -> float:
+        """Abweichung, ab der ein Sollwert am Thermostat als anders gilt: max(Schritt/2, 0,25 °C)."""
+        _, _, schritt = st.grenzen_generisch(attrs)
+        return max(schritt / 2, 0.25)
+
+    @staticmethod
+    def boost_temp(attrs: dict[str, Any]) -> float:
+        """Boost ohne Preset: höchstens 25 °C bzw. die Höchsttemperatur des Thermostats."""
+        _, hi, _ = st.grenzen_generisch(attrs)
+        return GenerischAdapter.runden(min(hi, BOOST_MAX), attrs)
+
     async def protokoll(self, room: Room, text: str, daten: dict[str, Any]) -> None:
         _LOGGER.info("Plananwendung %s: %s", room.raum, text)
         if self.store is not None:
@@ -393,15 +625,26 @@ class GenerischAdapter(Adapter):
 
     async def soll_schreiben(
         self, room: Room, a: dict[str, Any], wert: float, attrs: dict[str, Any], protokoll: str | None = None
-    ) -> float:
-        """Solltemperatur setzen und als zuletzt geschriebenen Wert merken (``protokoll``: Ereignis ``plan``)."""
+    ) -> bool:
+        """Solltemperatur setzen und als zuletzt geschriebenen Wert merken (``protokoll``: Ereignis ``plan``).
+
+        Steht das Thermostat bereits auf dem gerundeten Wert, wird nichts gesendet (API-Limits, z. B. tado).
+        Rückgabe: ob ein Befehl gesendet wurde."""
         v = self.runden(wert, attrs)
+        ist = an.to_float(attrs.get("temperature"))
+        if ist is not None and abs(ist - v) < 0.01:
+            a.update(geschrieben=v, geschrieben_zeit=iso(self.uhr()), gesehen=ist, nachgeschrieben=0)
+            return False
         await self._dienst(room, "set_temperature", {"temperature": st._temp_out(v)})
-        a["geschrieben"] = v
-        a["geschrieben_zeit"] = iso(self.uhr())
+        # ``gesehen`` bleibt der Wert vor dem Schreiben, bis das Thermostat den neuen Wert meldet
+        a.update(geschrieben=v, geschrieben_zeit=iso(self.uhr()), gesehen=ist, nachgeschrieben=0)
         if protokoll:
             await self.protokoll(room, protokoll, {"temperatur": v, "dienst": "climate.set_temperature"})
-        return v
+        return True
+
+    @staticmethod
+    def kann_aus(attrs: dict[str, Any]) -> bool:
+        return "off" in _liste(attrs.get("hvac_modes")) or bool((_features(attrs) or 0) & TURN_OFF)
 
     async def _ausschalten(self, room: Room, attrs: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         if "off" in _liste(attrs.get("hvac_modes")):
@@ -411,9 +654,10 @@ class GenerischAdapter(Adapter):
         return "turn_off", {}
 
     async def _einschalten(self, room: Room, attrs: dict[str, Any], gemerkt: str | None) -> tuple[str, dict[str, Any]]:
-        """Heizenden Modus wiederherstellen: gemerkter Modus, sonst bevorzugt heat."""
+        """Heizenden Modus wiederherstellen: bevorzugt heat (nicht ein gemerktes Geräteprogramm auto),
+        sonst der gemerkte Modus bzw. der erste verfügbare."""
         modi = [m for m in _liste(attrs.get("hvac_modes")) if m != "off"]
-        modus = gemerkt if gemerkt in modi else ("heat" if "heat" in modi else (modi[0] if modi else None))
+        modus = "heat" if "heat" in modi else (gemerkt if gemerkt in modi else (modi[0] if modi else None))
         if modus is None:
             await self._dienst(room, "turn_on", {})
             return "turn_on", {}
@@ -430,16 +674,12 @@ class GenerischAdapter(Adapter):
                 await self._dienst(room, "set_preset_mode", {"preset_mode": ziel})
         a.update(boost_bis=None, boost_art=None, vor_preset=None)
 
-    async def _timer_loeschen(self, room: Room, a: dict[str, Any], attrs: dict[str, Any]) -> None:
-        """Overlay und Boost ohne Rückkehr zur Temperatur beenden (vor dem Ausschalten)."""
-        await self._boost_beenden(room, a, attrs, True)
-        a.update(overlay_bis=None, overlay_temp=None, vor_temp=None)
-
     async def rueckkehr(
         self, room: Room, a: dict[str, Any], cl: dict[str, Any], info: PlanInfo | None, anlass: str | None
     ) -> tuple[str, bool]:
         """Overlay/Boost beenden: Preset zurück, Solltemperatur auf Plan-Soll (Plan-Modus mit Plananwendung,
-        ohne Sommer-Pause) bzw. auf den Wert vor Overlay/Boost. ``anlass``: Ereignis ``plan`` schreiben.
+        Thermostat im Zustand heat, ohne Sommer-Pause) bzw. auf den Wert vor Overlay/Boost.
+        ``anlass``: Ereignis ``plan`` schreiben.
 
         Rückgabe ``(text, geschrieben)``.
         """
@@ -453,7 +693,7 @@ class GenerischAdapter(Adapter):
         if not an_:
             return beendet, False
         ziel: float | None = None
-        nach_plan = a["modus"] == "plan" and self.plananwendung is not None and not self.pause
+        nach_plan = a["modus"] == "plan" and self.plan_aktiv and not self.pause and cl.get("state") == "heat"
         if nach_plan and info is not None and info.soll is not None:
             ziel = info.soll
         elif hatte_timer and vor is not None:
@@ -462,29 +702,54 @@ class GenerischAdapter(Adapter):
             return beendet, False
         ziel = self.runden(ziel, attrs)
         text = f"Zurück auf {self.fmt(ziel)} °C" + (" (Heizplan)" if nach_plan else "")
-        ist_soll = an.to_float(attrs.get("temperature"))
-        geschrieben = ist_soll is None or abs(ist_soll - ziel) > 0.01
-        if geschrieben:
-            await self.soll_schreiben(room, a, ziel, attrs)
-        else:
-            a["geschrieben"] = ziel
-            a["geschrieben_zeit"] = iso(self.uhr())
+        geschrieben = await self.soll_schreiben(room, a, ziel, attrs)
         if anlass:
             await self.protokoll(room, f"{anlass}, {text[0].lower()}{text[1:]}", {"temperatur": ziel, "anlass": "rueckkehr"})
         return text, geschrieben
 
-    async def sommer_abgleich(self, room: Room, a: dict[str, Any], cl: dict[str, Any]) -> str | None:
-        """Sommer mit ``plan_pausieren_und_aus``: Räume im Plan-Modus ausschalten (Modus merken);
-        Heizperiode: gemerkten Modus wiederherstellen. Rückgabe: Zustand des Thermostats danach."""
+    async def sommer_abgleich(
+        self, room: Room, a: dict[str, Any], cl: dict[str, Any], info: PlanInfo | None = None
+    ) -> str | None:
+        """Beginn der Sommer-Pause (``sommer_aus_offen``, nur Räume im Modus plan mit Thermostat im Zustand heat):
+        laufende Timer zurücksetzen, dann mit ``plan_pausieren_und_aus`` ausschalten (Modus merken), sonst bzw.
+        ohne Ausschaltmöglichkeit einmal die Absenktemperatur schreiben. Heizperiode: gemerkten Modus
+        wiederherstellen (bevorzugt heat). Nach wiederholten Fehlern wird aufgegeben (Ereignis).
+
+        Rückgabe: Zustand des Thermostats danach."""
         zustand = cl.get("state")
         attrs = cl.get("attributes") or {}
         if self.pause and a.get("sommer_aus_offen"):
-            if a["modus"] == "plan" and zustand != "off":
-                await self._timer_loeschen(room, a, attrs)
-                a["hvac_vor_sommer"] = zustand
-                await self._ausschalten(room, attrs)
-                await self.protokoll(room, "Sommer, Thermostat ausgeschaltet", {"hvac_mode": "off", "vorher": zustand})
-                zustand = "off"
+            if a["modus"] == "plan" and zustand == "heat" and self.plan_aktiv:
+                try:
+                    if a.get("overlay_bis") or a.get("boost_bis"):
+                        await self.rueckkehr(room, a, cl, info, None)
+                    if self.opts.sommer_aktion == "plan_pausieren_und_aus" and self.kann_aus(attrs):
+                        a["hvac_vor_sommer"] = zustand
+                        await self._ausschalten(room, attrs)
+                        await self.protokoll(room, "Sommer, Thermostat ausgeschaltet", {"hvac_mode": "off", "vorher": zustand})
+                        zustand = "off"
+                    else:
+                        wert = self.runden(absenk_fuer(room, self.opts.absenktemperatur), attrs)
+                        if await self.soll_schreiben(room, a, wert, attrs):
+                            await self.protokoll(
+                                room,
+                                f"Sommer, Absenkung {self.fmt(wert)} °C (Heizplan pausiert)",
+                                {"temperatur": wert, "anlass": "sommer"},
+                            )
+                except HAError as err:
+                    n = self._sommer_fehler.get(room.raum, 0) + 1
+                    self._sommer_fehler[room.raum] = n
+                    if n < SOMMER_MAX_VERSUCHE:
+                        raise
+                    self._sommer_fehler.pop(room.raum, None)
+                    a["sommer_aus_offen"] = False
+                    await self.protokoll(
+                        room,
+                        f"Sommer: Thermostat nach {n} Versuchen nicht umgestellt ({err}). Bitte prüfen Sie das Gerät.",
+                        {"anlass": "sommer_fehler", "versuche": n},
+                    )
+                    return zustand
+            self._sommer_fehler.pop(room.raum, None)
             a["sommer_aus_offen"] = False
         elif not self.pause and a.get("hvac_vor_sommer"):
             gemerkt = a["hvac_vor_sommer"]
@@ -512,8 +777,7 @@ class GenerischAdapter(Adapter):
         assert cl is not None
         attrs = cl.get("attributes") or {}
         befehl = st.pruefe_befehl_generisch(body, attrs)
-        if befehl["aktion"] in ("overlay", "zurueck") or befehl.get("modus") == "plan":
-            await self.vorbereiten([room], by_id)
+        await self.vorbereiten([room], by_id)
         async with self.lock:
             a = self.app(room.raum)
             alt = dict(a)
@@ -521,8 +785,8 @@ class GenerischAdapter(Adapter):
                 out = await self._aktion(room, cl, a, f, befehl, by_id)
             finally:
                 if a != alt:
-                    await self.app_speichern(room.raum, a)
-        if befehl.get("modus") == "plan" and self.plananwendung is not None:
+                    await self.app_speichern(room, a)
+        if befehl.get("modus") == "plan" and self.plan_aktiv and self.plananwendung is not None:
             await self.plananwendung.takt_raum(room)
         return out
 
@@ -580,9 +844,11 @@ class GenerischAdapter(Adapter):
                 bis, text = "dauerhaft", f"Temperatur {self.fmt(temp)} °C dauerhaft"
             else:
                 bis, text = iso(jetzt + timedelta(minutes=dauer)), f"Temperatur {self.fmt(temp)} °C für {dauer} Minuten"
-            await self.soll_schreiben(room, a, temp, attrs)
+            gesendet = await self.soll_schreiben(room, a, temp, attrs)
             a.update(overlay_bis=bis, overlay_temp=temp, vor_temp=vor)
-            return ergebnis("set_temperature", {"temperatur": st._temp_out(temp), "dauer": dauer, "bis": bis}, text)
+            return ergebnis(
+                "set_temperature" if gesendet else None, {"temperatur": st._temp_out(temp), "dauer": dauer, "bis": bis}, text
+            )
         if aktion == "temperatur":
             if a["modus"] != "hand":
                 raise st.json_fehler(
@@ -591,8 +857,10 @@ class GenerischAdapter(Adapter):
             temp = befehl["temperatur"]
             await self._boost_beenden(room, a, attrs, True)
             a.update(vor_temp=None)
-            await self.soll_schreiben(room, a, temp, attrs)
-            return ergebnis("set_temperature", {"temperature": st._temp_out(temp)}, f"Handwert {self.fmt(temp)} °C")
+            gesendet = await self.soll_schreiben(room, a, temp, attrs)
+            return ergebnis(
+                "set_temperature" if gesendet else None, {"temperature": st._temp_out(temp)}, f"Handwert {self.fmt(temp)} °C"
+            )
         # boost
         dauer = befehl["dauer"]
         bis = iso(jetzt + timedelta(minutes=dauer))
@@ -603,14 +871,14 @@ class GenerischAdapter(Adapter):
             await self._dienst(room, "set_preset_mode", {"preset_mode": "boost"})
             a.update(boost_bis=bis, boost_art="preset")
             return ergebnis("set_preset_mode", {"preset_mode": "boost", "dauer": dauer}, f"Boost für {dauer} Minuten")
-        _, hi, _ = st.grenzen_generisch(attrs)
+        hi = self.boost_temp(attrs)
         if not laeuft:
             a["vor_temp"] = a.get("vor_temp") if a.get("overlay_bis") else an.to_float(attrs.get("temperature"))
         a.update(overlay_bis=None, overlay_temp=None)
-        await self.soll_schreiben(room, a, hi, attrs)
+        gesendet = await self.soll_schreiben(room, a, hi, attrs)
         a.update(boost_bis=bis, boost_art="temperatur")
         return ergebnis(
-            "set_temperature",
+            "set_temperature" if gesendet else None,
             {"temperature": st._temp_out(hi), "dauer": dauer},
             f"Boost für {dauer} Minuten ({self.fmt(hi)} °C)",
         )
@@ -630,7 +898,9 @@ class GenerischAdapter(Adapter):
         if neu == "aus":
             if not f["aus"]:
                 raise st.json_fehler(web.HTTPConflict, "Das Thermostat kann nicht ausgeschaltet werden.", "modus")
-            await self._timer_loeschen(room, a, attrs)
+            # Overlay/Boost vorher beenden: Temperatur-Boost nicht im ausgeschalteten Gerät stehen lassen
+            if a.get("overlay_bis") or a.get("boost_bis"):
+                await self.rueckkehr(room, a, cl, self._plan.get(room.raum), None)
             if zustand != "off":
                 a["hvac_vor_aus"] = zustand
             a.update(modus="aus", hvac_vor_sommer=None, sommer_aus_offen=False)
@@ -641,12 +911,14 @@ class GenerischAdapter(Adapter):
         if neu == "hand" and a.get("overlay_bis"):
             a.update(overlay_bis=None, overlay_temp=None, vor_temp=None)
         if neu == "plan" and alt != "plan":
-            a.update(geschrieben=None, geschrieben_zeit=None)  # Plan-Soll sofort neu anwenden
+            # Plan-Soll neu anwenden (steht das Thermostat schon darauf, wird nichts gesendet)
+            a.update(geschrieben=None, geschrieben_zeit=None, gesehen=None, nachgeschrieben=0)
         service: str | None = None
         daten: dict[str, Any] = {}
+        modi = _liste(attrs.get("hvac_modes"))
         if zustand == "off":
             gemerkt = a.get("hvac_vor_aus") or a.get("hvac_vor_sommer")
-            if neu == "plan" and self.pause and self.opts.sommer_aktion == "plan_pausieren_und_aus":
+            if neu == "plan" and self.pause and self.plan_aktiv and self.opts.sommer_aktion == "plan_pausieren_und_aus":
                 # Sommer: bleibt aus, zu Beginn der Heizperiode wird eingeschaltet
                 a["hvac_vor_sommer"] = gemerkt or "heat"
                 text += " (Sommer, das Thermostat bleibt bis zur Heizperiode aus)"
@@ -654,6 +926,12 @@ class GenerischAdapter(Adapter):
                 service, daten = await self._einschalten(room, attrs, gemerkt)
                 a["hvac_vor_sommer"] = None
             a["hvac_vor_aus"] = None
+        elif zustand not in ("heat", None, *KUEHLEN, *NICHT_VERFUEGBAR) and "heat" in modi:
+            # Geräteprogramm (z. B. auto): einmalig auf heat, damit Plan bzw. Handwert gelten
+            await self._dienst(room, "set_hvac_mode", {"hvac_mode": "heat"})
+            service, daten = "set_hvac_mode", {"hvac_mode": "heat"}
+            text += f" (Thermostat von {zustand} auf heat umgestellt)"
+            await self.protokoll(room, f"Thermostat von {zustand} auf heat umgestellt", {"hvac_mode": "heat", "vorher": zustand})
         return ergebnis(service, daten, text)
 
     # ------------------------------------------------------------- Integration / Fähigkeiten
@@ -667,30 +945,36 @@ class GenerischAdapter(Adapter):
     def heizperiode_ist(self) -> bool | None:
         return not self.pause
 
-    async def heizperiode_anwenden(self, aktiv: bool, entitaet: str) -> None:
-        """Sommer: Plananwendung pausieren (bei ``plan_pausieren_und_aus`` Räume im Plan-Modus ausschalten).
-        Heizperiode: gemerkten Modus wiederherstellen und die Heizpläne anwenden. Hand-Räume bleiben unberührt."""
+    async def heizperiode_anwenden(self, aktiv: bool, entitaet: str, erstentscheid: bool = False) -> None:
+        """Sommer: Plananwendung pausieren; mit aktiver Plananwendung Räume im Plan-Modus ausschalten
+        (``plan_pausieren_und_aus``) bzw. einmal auf die Absenktemperatur stellen. Heizperiode: gemerkten
+        Modus wiederherstellen und die Heizpläne anwenden. Hand-Räume bleiben unberührt.
+
+        ``erstentscheid``: allererste Entscheidung der Automatik – nur den Zustand merken, nichts schalten."""
         states = await self.client.get_states()
         by_id = {s["entity_id"]: s for s in states if "entity_id" in s}
         rooms = await self.raeume_aktuell(states)
-        aus = not aktiv and self.opts.sommer_aktion == "plan_pausieren_und_aus"
+        await self.vorbereiten(rooms, by_id)
+        umstellen = not aktiv and self.plan_aktiv and not erstentscheid
+        if erstentscheid and not aktiv:
+            _LOGGER.info("Erste Entscheidung der Heizperiode: Sommer, Thermostate bleiben unverändert")
         async with self.lock:
             await self.pause_setzen(not aktiv)
             for room in rooms:
                 a = self.app(room.raum)
                 alt = dict(a)
-                a["sommer_aus_offen"] = aus and a["modus"] == "plan"
+                a["sommer_aus_offen"] = umstellen and a["modus"] == "plan"
                 cl = by_id.get(room.climate or "")
                 try:
                     if cl is not None and self.raum_faehigkeiten(room, by_id)["steuerbar"]:
-                        await self.sommer_abgleich(room, a, cl)
+                        await self.sommer_abgleich(room, a, cl, self._plan.get(room.raum))
                 except HAError as err:
                     _LOGGER.warning("Heizperiode %s: %s (neuer Versuch mit der Plananwendung)", room.raum, err)
                 finally:
                     if a != alt:
-                        await self.app_speichern(room.raum, a)
+                        await self.app_speichern(room, a)
         await self.heizperiode_spiegeln(aktiv, entitaet, by_id)
-        if aktiv and self.plananwendung is not None:
+        if aktiv and self.plan_aktiv and self.plananwendung is not None:
             await self.plananwendung.takt(erzwingen=True)
 
     async def heizperiode_spiegeln(self, aktiv: bool, entitaet: str, by_id: dict[str, dict[str, Any]]) -> None:

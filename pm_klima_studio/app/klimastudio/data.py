@@ -100,8 +100,10 @@ def _floor_chunk(ts: datetime) -> datetime:
 class DataService:
     """Liest Historien aus HA und berechnet die Auswertungen je Raum."""
 
-    def __init__(self, client: HAClient, cache: HistoryCache | None = None) -> None:
+    def __init__(self, client: HAClient, cache: HistoryCache | None = None, generisch: bool = False) -> None:
         self.client = client
+        #: Betriebsart generisch: Sollbereich und unbekannte Heizstunden (pm_networks wie 1.1.1)
+        self.generisch = generisch
         self.cache = cache or HistoryCache()
         self._sem = asyncio.Semaphore(2)
 
@@ -126,7 +128,7 @@ class DataService:
                 recs = an.parse_history_rows(raw.get(entity_id, []))
                 value = {
                     "hvac_action": an.attr_series(recs, "hvac_action", numeric=False),
-                    "soll": _soll_series(recs),
+                    "soll": _soll_series(recs) if self.generisch else an.attr_series(recs, "temperature"),
                     "ist": an.attr_series(recs, "current_temperature"),
                     "state": an.state_series(recs),
                     "action_bekannt": _action_bekannt(recs),
@@ -217,7 +219,7 @@ class DataService:
             clim = await safe(self.history("climate", room.climate, hist_start, end), "Heizung")
             if clim:
                 bekannt = clim.get("action_bekannt") or []
-                if bekannt and not any(v for _, v in bekannt):
+                if self.generisch and bekannt and not any(v for _, v in bekannt):
                     # Thermostat meldet kein hvac_action (viele Standard-Thermostate): Heizstunden unbekannt
                     out["heizstunden"] = None
                 else:

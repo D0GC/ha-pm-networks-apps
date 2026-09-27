@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import pytest
@@ -143,12 +144,32 @@ async def test_erkennung_wird_gecacht(ha_client, fake):
     assert await erkennung.geladen() is True
 
 
-async def test_erkennung_unbekannt_nicht_gecacht(ha_client, fake):
+async def test_erkennung_unbekannt_kurz_gecacht(ha_client, fake):
+    """Unbekannt (None) gilt nur kurz (Standard 60 s), danach neuer Versuch."""
     erkennung = PmKlimaErkennung(ha_client, ttl=300)
+    assert erkennung.ttl_unbekannt == 60
     fake.fail_ws = {"config_entries/get", "get_services"}
     assert await erkennung.geladen() is None
     fake.fail_ws = set()
+    anzahl = len(fake.ws_commands)
+    assert await erkennung.geladen() is None  # aus dem Cache, keine neue Abfrage
+    assert len(fake.ws_commands) == anzahl
+    erkennung.ttl_unbekannt = 0
     assert await erkennung.geladen() is True
+
+
+async def test_erkennung_zeitlimit(ha_client, fake, monkeypatch):
+    """Antwortet HA nicht, liefert die Erkennung nach dem Zeitlimit None (/api/info blockiert nicht)."""
+
+    async def haengt(domain=None):
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(ha_client, "config_entries_get", haengt)
+    erkennung = PmKlimaErkennung(ha_client, zeitlimit=0.05)
+    assert PmKlimaErkennung(ha_client).zeitlimit == 5.0
+    start = asyncio.get_running_loop().time()
+    assert await erkennung.geladen() is None
+    assert asyncio.get_running_loop().time() - start < 1
 
 
 # ------------------------------------------------------------------ /api/info

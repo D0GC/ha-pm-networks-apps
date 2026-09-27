@@ -433,7 +433,7 @@ class FakeHA:
         self.generisch: dict[str, dict[str, Any]] = {} if pm_klima else generische_klima()
         self.bereiche: list[dict[str, Any]] = [] if pm_klima else copy.deepcopy(GEN_BEREICHE)
         self.geraete: list[dict[str, Any]] = [] if pm_klima else copy.deepcopy(GEN_GERAETE)
-        # Registrierungsdaten je Entität: entity_id -> {"area_id", "device_id", "hidden_by"}
+        # Registrierungsdaten je Entität: entity_id -> {"area_id", "device_id", "hidden_by", "platform"?}
         self.registry: dict[str, dict[str, Any]] = {}
         if not pm_klima:
             for eid, (area, dev) in GEN_KLIMA_REGISTRY.items():
@@ -923,7 +923,8 @@ class FakeHA:
             out.append(
                 {
                     "entity_id": eid,
-                    "platform": eid.split(".", 1)[0] if eid.startswith(("schedule.", "input_boolean.", "person.")) else "demo",
+                    "platform": reg.get("platform")
+                    or (eid.split(".", 1)[0] if eid.startswith(("schedule.", "input_boolean.", "person.")) else "demo"),
                     "area_id": reg.get("area_id"),
                     "device_id": reg.get("device_id"),
                     "hidden_by": reg.get("hidden_by"),
