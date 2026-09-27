@@ -62,7 +62,7 @@ h3 { font-size: .95rem; }
 
 main { max-width: 1320px; margin: 0 auto; padding: 20px 24px 40px; }
 .loading, .empty { padding: 40px; text-align: center; color: var(--muted); }
-.foot { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 18px; color: var(--muted); font-size: .75rem; }
+.foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; padding: 18px; color: var(--muted); font-size: .75rem; }
 .foot-logo { height: 26px; opacity: .8; }
 
 /* Steuerleisten */
