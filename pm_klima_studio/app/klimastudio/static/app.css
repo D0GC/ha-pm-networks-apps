@@ -255,6 +255,11 @@ table.plain th { color: var(--muted); font-weight: 600; font-size: .72rem; text-
 .ctl-card.busy { opacity: .75; }
 .ctl-status { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .ctl-status .pill { margin-left: 0; }
+.ctl-hinweis { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--m-auto); color: var(--lavender); overflow-wrap: anywhere; }
+.ctl-hinweis.muted { border-left-color: var(--line-strong); color: var(--muted); }
+.ctl-card .ctl-warn { margin: 6px 0 0; }
+.ctl-hinweise { margin: 6px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
+.ctl-hinweise li + li { margin-top: 3px; }
 .ctl-block { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .ctl-block.hl { border: 1px solid rgba(184, 133, 214, .55); border-radius: 10px; padding: 8px 10px; background: rgba(184, 133, 214, .08); }
 .seg button.vorschlag, .btn.vorschlag { box-shadow: 0 0 0 2px var(--m-auto) inset; color: var(--cloud); }

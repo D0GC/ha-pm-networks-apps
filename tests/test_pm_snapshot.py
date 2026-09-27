@@ -18,6 +18,7 @@ import pytest
 
 from conftest import LOCAL, WISSEN_TEST
 from fake_ha import FakeHA
+from klimastudio import __version__
 from klimastudio.config import Options
 from klimastudio.server import KlimaStudio, create_app
 
@@ -47,6 +48,19 @@ def _normalisiere(pfad: str, daten):
         daten = dict(daten)
         daten["stand"] = "<stand>"
     return daten
+
+
+def _versionen_pruefen(soll: dict, ist: dict) -> None:
+    """Versionsfelder gegen ``__version__`` prüfen und im Soll angleichen (alle übrigen Felder unverändert).
+
+    Betrifft nur ``/api/info`` ``version`` und ``/api/coach`` ``wissen_version`` des produktiven
+    Wissens (dessen Version folgt der App-Version); das Test-Wissen (``test-1``) bleibt fest.
+    """
+    assert ist["/api/info"]["version"] == __version__
+    soll["/api/info"] = {**soll["/api/info"], "version": __version__}
+    if soll["/api/coach"]["wissen_version"] != "test-1":
+        assert ist["/api/coach"]["wissen_version"] == __version__
+        soll["/api/coach"] = {**soll["/api/coach"], "wissen_version": __version__}
 
 
 def _szenario_freigabe(fake: FakeHA) -> None:
@@ -128,6 +142,7 @@ async def test_pm_antworten_wie_1_1_1(uhr, aiohttp_server, aiohttp_client, tmp_p
         SNAPSHOT.write_text(json.dumps(alle, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         pytest.skip("Snapshot geschrieben")
     soll = json.loads(SNAPSHOT.read_text(encoding="utf-8"))[variante]
+    _versionen_pruefen(soll, ist)
     for pfad in soll:
         assert ist[pfad] == soll[pfad], pfad
     assert set(ist) == set(soll)

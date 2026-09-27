@@ -504,6 +504,22 @@
         <div class="chips small-chips" data-dauer>${dauern.map(x => `<button type="button" class="chip ${x.wert === c.dauer ? "active" : ""}" data-d="${x.wert == null ? "" : x.wert}">${esc(x.label)}</button>`).join("")}</div></div>`;
   }
 
+  const NICHT_UEBERNOMMEN = "Das Thermostat hat den Sollwert nicht übernommen.";
+  const HAND_MIT_PLAN = "Wählen Sie Plan, damit die App den Heizplan anwendet.";
+
+  // Generisch: Hinweise des Raumzustands (plan_hinweis, hinweise, nicht_uebernommen, Hand mit Heizplan)
+  function hinweiseGen(r, info) {
+    let h = "";
+    if (r.nicht_uebernommen) h += `<div class="warnbox small ctl-warn">${esc(NICHT_UEBERNOMMEN)}</div>`;
+    if (r.plan_hinweis) h += `<div class="small ctl-hinweis">${esc(r.plan_hinweis)}</div>`;
+    const planAn = r.plan_anwendung !== false && A().kann("plan_anwendung");
+    if (r.steuerbar && r.modus === "hand" && info && info.schedule && planAn) h += `<div class="small muted ctl-hinweis">${esc(HAND_MIT_PLAN)}</div>`;
+    // Der Einzelhinweis „nicht übernommen“ steht schon als Warnung oben
+    const liste = (Array.isArray(r.hinweise) ? r.hinweise : []).filter(x => x && !(r.nicht_uebernommen && /nicht übernommen\.?$/.test(x)));
+    if (liste.length) h += `<ul class="ctl-hinweise small muted">${liste.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
+    return h;
+  }
+
   // Betriebsart generisch: App-Modus Plan/Hand/Aus, Thermostat-Modus klein, Plan-Soll
   function cardHtmlGen(slug, r) {
     const info = A().rooms().find(x => x.raum === slug);
@@ -513,7 +529,7 @@
     const kopf = `<div class="room-head"><h3>${esc(r.name || slug)}</h3><span class="mode ${esc(m.cls)}">${esc(m.text)}</span></div>
       <div class="temps"><span class="ist">${grad(r.ist)}</span><span class="soll">Soll ${sollGen(r)}</span>${r.feuchte != null ? `<span class="soll">${num(r.feuchte, 0)} %</span>` : ""}</div>
       <div class="grund">${esc(grund)}${grund ? " · " : ""}<span class="hvac">Thermostat ${esc(A().hvacText(r.hvac_modus))}${r.preset && r.preset !== "none" ? ` · Preset ${esc(r.preset)}` : ""}</span></div>`;
-    if (!r.steuerbar) return kopf + `<p class="small muted">${esc(r.steuerbar_grund || "Dieser Raum kann nicht gesteuert werden.")}</p>`;
+    if (!r.steuerbar) return kopf + `<p class="small muted">${esc(r.steuerbar_grund || "Dieser Raum kann nicht gesteuert werden.")}</p>` + hinweiseGen(r, info);
     const c = ctlFor(slug, r);
     const z = statusZeilen(r);
     let plan = "";
@@ -538,14 +554,14 @@
     }
     const modi = MODI_GEN.filter(x => !Array.isArray(r.modi) || r.modi.includes(x.m) || x.m === r.modus);
     const ausAn = r.modus === "aus" || r.hvac_modus === "off";
-    const boostLbl = r.boost_art === "preset" ? "Boost (Preset des Thermostats)" : `Boost auf ${grad(r.max_temp)}`;
+    const boostLbl = r.boost_art === "preset" ? "Boost (Preset des Thermostats)" : `Boost auf ${grad(r.boost_temp ?? r.max_temp)}`;
     const zurueck = r.overlay_bis || r.boost_bis
       ? `<span class="grow"></span><button class="btn ${c.fokus === "zurueck" ? "vorschlag" : "ghost"}" data-a="zurueck">${r.modus === "plan" ? "Zurück zum Plan" : "Boost beenden"}</button>` : "";
     const boost = ausAn
       ? (zurueck ? `<div class="ctl-block"><div class="ctl-row wrap">${zurueck}</div></div>` : "")
       : `<div class="ctl-block ${c.fokus === "boost" || c.fokus === "zurueck" ? "hl" : ""}"><div class="lbl">${boostLbl}</div>
         <div class="ctl-row wrap">${BOOST.map(b => `<button class="btn" data-a="boost" data-d="${b}">${b} min</button>`).join("")}${zurueck}</div></div>`;
-    return kopf + (z.length ? `<div class="ctl-status">${z.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : "") + plan +
+    return kopf + (z.length ? `<div class="ctl-status">${z.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : "") + plan + hinweiseGen(r, info) +
       `<div class="ctl-block ${c.fokus === "modus" ? "hl" : ""}"><div class="lbl">Betriebsart</div>${seg("seg-" + slug, modi.map(x => ({ v: x.m, label: x.label })), r.modus, false, c.fokus === "modus" ? c.vorschlagModus : null)}</div>
       ${teil}${boost}`;
   }

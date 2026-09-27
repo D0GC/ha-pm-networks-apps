@@ -236,7 +236,11 @@ def _ids(werk, app, raum, **g):
 @pytest.mark.parametrize(
     ("raum", "g", "regel"),
     [
-        ({"modus": "hand", "soll": 21}, {"anwesenheit": {"jemand_zuhause": True}}, "handbetrieb_dauerhaft_generisch"),
+        (
+            {"modus": "hand", "soll": 21, "plan": PLAN_OK},
+            {"anwesenheit": {"jemand_zuhause": True}},
+            "handbetrieb_dauerhaft_generisch",
+        ),
         ({"modus": "hand", "soll": 21}, {"anwesenheit": {"jemand_zuhause": False}}, "abwesend_handbetrieb_generisch"),
         ({"modus": "aus", "ist": 13}, {"wetter": {"min_3tage": -3}}, "frost_raum_aus_generisch"),
         ({"modus": "aus", "ist": 14, "feuchte": 68}, {}, "raum_aus_feucht_generisch"),
@@ -253,6 +257,26 @@ def test_generische_gegenstuecke_feuern(werk, raum, g, regel):
     assert not {i.split(":")[0] for i in ids} & NUR_PM
     # dieselbe Lage im Modus pm_networks: kein generisches Gegenstück
     assert not [i for i in _ids(werk, {"betriebsart": "pm_networks"}, raum, **g) if "_generisch" in i]
+
+
+def test_handbetrieb_generisch_nur_mit_heizplan(werk):
+    """Nach dem Erststart stehen alle Räume auf hand: Aufforderung zur Planwahl nur bei vorhandenem Heizplan."""
+    zuhause = {"anwesenheit": {"jemand_zuhause": True}}
+    hand = {"modus": "hand", "soll": 21}
+    rid = "handbetrieb_dauerhaft_generisch:wohnzimmer"
+    assert rid in _ids(werk, GEN, {**hand, "plan": PLAN_OK}, **zuhause)
+    # kein Heizplan (alle Planwerte None) bzw. Heizplan ohne Blöcke: kein Hinweis
+    assert rid not in _ids(werk, GEN, hand, **zuhause)
+    assert rid not in _ids(werk, GEN, {**hand, "plan": dict.fromkeys(PLAN_OK)}, **zuhause)
+    assert rid not in _ids(werk, GEN, {**hand, "plan": {**PLAN_OK, "leer": True}}, **zuhause)
+    # ohne Plananwendung: kein Hinweis
+    ohne = {"betriebsart": "generisch", "plan_anwendung": False}
+    assert rid not in _ids(werk, ohne, {**hand, "plan": PLAN_OK}, **zuhause)
+    regel = next(r for r in werk.regeln if r["id"] == "handbetrieb_dauerhaft_generisch")
+    assert regel["titel"] == "Heizplan noch nicht aktiv"
+    assert "dauerhaft" not in regel["text"]
+    assert "rund um die Uhr" not in regel["begruendung"]
+    assert "Wählen Sie Plan" in regel["text"]
 
 
 def test_generische_regeln_im_sommer(werk):

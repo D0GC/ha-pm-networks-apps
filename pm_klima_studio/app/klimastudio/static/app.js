@@ -162,29 +162,35 @@
   }
   const lvl = (v, warn, bad) => v == null ? "" : v >= bad ? "bad" : v >= warn ? "warn" : "ok";
 
-  // Betriebsart generisch: App-Modus (plan | hand | aus) aus /api/steuerung, Thermostat-Modus klein
+  // Betriebsart generisch: App-Modus (plan | hand | aus) und Plan-Soll aus /api/aktuell (app_modus, plan_soll), Thermostat-Modus klein
   const APP_MODUS = { plan: { cls: "auto", text: "Plan" }, hand: { cls: "heat", text: "Hand" }, aus: { cls: "off", text: "Aus" } };
   const HVAC_TEXT = { heat: "Heizen", off: "Aus", auto: "Auto", heat_cool: "Heizen/Kühlen", cool: "Kühlen", dry: "Entfeuchten", fan_only: "Lüfter", unavailable: "nicht verfügbar", unknown: "unbekannt" };
   const hvacText = m => m == null ? "–" : HVAC_TEXT[m] || String(m);
-  function modeInfoGen(z, cur) {
-    if ((z || cur || {}).hvac_action === "heating") return { cls: "heizt", text: "heizt" };
-    if (z && z.steuerbar === false) return { cls: "off", text: "nur Anzeige" };
-    if (z && APP_MODUS[z.modus]) return APP_MODUS[z.modus];
-    return { cls: "off", text: cur && cur.modus ? hvacText(cur.modus) : "unbekannt" };
+  // Nur Anzeige: Thermostat mit Temperaturbereich oder nicht verfügbar
+  const nurAnzeige = cur => !!cur.soll_bereich || cur.modus == null || cur.modus === "unavailable" || cur.modus === "unknown";
+  function modeInfoGen(cur) {
+    if (cur.hvac_action === "heating") return { cls: "heizt", text: "heizt" };
+    if (!cur.app_modus) return { cls: "off", text: cur.modus ? hvacText(cur.modus) : "unbekannt" };
+    if (nurAnzeige(cur)) return { cls: "off", text: "nur Anzeige" };
+    return APP_MODUS[cur.app_modus] || { cls: "off", text: String(cur.app_modus) };
   }
-  function statusLineGen(z, cur, slug) {
-    if (!z) return cur && cur.modus ? `Thermostat ${hvacText(cur.modus)}` : "";
+  function statusLineGen(cur, slug) {
+    if (!cur.app_modus) return cur.modus ? `Thermostat ${hvacText(cur.modus)}` : "";
+    if (nurAnzeige(cur)) return `nicht steuerbar · Thermostat ${hvacText(cur.modus)}`;
     const p = [];
-    if (z.steuerbar === false) return `nicht steuerbar · Thermostat ${hvacText(z.hvac_modus)}`;
     const info = rooms().find(x => x.raum === slug);
-    if (z.boost_bis) p.push("Boost");
-    else if (z.overlay_bis) p.push("Abweichung vom Plan");
-    else if (z.modus === "plan" && info && !info.schedule) p.push("kein Heizplan");
-    else if (z.modus === "plan") p.push(z.sommer_pause ? "Sommer, Plan pausiert" : z.plan_anwendung === false ? "Plananwendung abgeschaltet" : "folgt dem Heizplan");
-    else if (z.modus === "hand") p.push("Handbetrieb");
-    else if (z.modus === "aus") p.push("ausgeschaltet");
-    if (z.modus === "plan" && z.plan_soll != null) p.push(`Plan-Soll ${num(z.plan_soll)} °C`);
-    p.push(`Thermostat ${hvacText(z.hvac_modus)}`);
+    const m = cur.app_modus;
+    if (m === "plan") {
+      const soll = typeof cur.soll === "number" ? cur.soll : null;
+      if (info && !info.schedule && cur.plan_soll == null) p.push("kein Heizplan");
+      else if (!kann("plan_anwendung")) p.push("Plananwendung abgeschaltet");
+      else if (cur.preset === "boost") p.push("Boost");
+      else if (cur.modus !== "off" && soll != null && cur.plan_soll != null && Math.abs(soll - cur.plan_soll) >= 0.25) p.push("weicht vom Plan ab");
+      else if (cur.modus !== "off") p.push("folgt dem Heizplan");
+      if (cur.plan_soll != null) p.push(`Plan-Soll ${num(cur.plan_soll)} °C`);
+    } else if (m === "hand") p.push("Handbetrieb");
+    else if (m === "aus") p.push("ausgeschaltet");
+    p.push(`Thermostat ${hvacText(cur.modus)}`);
     return p.join(" · ");
   }
   const sollText = r => r.soll != null ? num(r.soll) + " °C" : r.soll_bereich ? `${num(r.soll_bereich.min)}–${num(r.soll_bereich.max)} °C` : "–";
@@ -193,22 +199,19 @@
     main.innerHTML = `<div class="bar"><h2 class="grow">Übersicht</h2>${rangeChips()}</div><div class="loading">Auswertung läuft …</div>`;
     bindRangeChips(main);
     const gen = generisch();
-    const [cur, ov, ctl] = await Promise.all([api("aktuell"), api("uebersicht?bereich=" + S.bereich),
-      gen ? api("steuerung").catch(() => null) : null]);
+    const [cur, ov] = await Promise.all([api("aktuell"), api("uebersicht?bereich=" + S.bereich)]);
     if (stale(main)) return;
     const c = cur.data, o = ov.data;
-    const zustand = (ctl && ctl.data && ctl.data.raeume) || {};
     const recos = (c.empfehlungen || []).map(e => `<li>${esc(e.text)}</li>`).join("") ||
       `<li class="muted">Derzeit liegen keine Empfehlungen vor.</li>`;
     const tiles = o.raeume.map(a => {
       const r = c.raeume[a.raum] || {};
-      const z = zustand[a.raum];
-      const m = gen ? modeInfoGen(z, r) : modeInfo(r);
+      const m = gen ? modeInfoGen(r) : modeInfo(r);
       const f = a.feuchte || {}, s = a.schimmel || {}, co = a.co2 || {}, w = a.fenster || {};
       return `<article class="card glass">
         <div class="room-head"><h3>${esc(a.name)}</h3><span class="mode ${esc(m.cls)}">${esc(m.text)}</span></div>
         <div class="temps"><span class="ist">${num(r.ist)} °C</span><span class="soll">Soll ${gen ? sollText(r) : r.soll == null ? "–" : num(r.soll) + " °C"}</span></div>
-        <div class="grund">${esc(gen ? statusLineGen(z, r, a.raum) : statusLine(r))}</div>
+        <div class="grund">${esc(gen ? statusLineGen(r, a.raum) : statusLine(r))}</div>
         <div class="metrics">
           <div class="metric"><div class="lbl">Heizzeit</div><div class="val">${a.heizstunden == null ? "–" : num(a.heizstunden) + " h"}</div><div class="sub">${RANGE_LABEL[S.bereich]}</div></div>
           <div class="metric ${lvl(r.feuchte, 60, 70)}"><div class="lbl">Feuchte</div><div class="val">${r.feuchte == null ? "–" : num(r.feuchte, 0) + " %"}</div><div class="sub">${f.stunden_70 ? num(f.stunden_70) + " h über 70 %" : "max " + num(f.max, 0) + " %"}</div></div>
@@ -220,7 +223,7 @@
     }).join("");
     main.innerHTML = `<div class="bar"><h2 class="grow">Übersicht</h2>${rangeChips()}</div>
       <div class="hero">
-        ${kann("empfehlungen_integration") ? `<section class="card glass"><div class="kicker">Empfehlungen der Integration</div><ul class="reco">${recos}</ul></section>` : betriebHtml(zustand)}
+        ${kann("empfehlungen_integration") ? `<section class="card glass"><div class="kicker">Empfehlungen der Integration</div><ul class="reco">${recos}</ul></section>` : betriebHtml(c.raeume || {})}
         <section class="card glass"><div class="kicker">Außen</div>
           <div class="temps"><span class="ist">${num(c.aussen.temperatur)} °C</span><span class="soll">${num(c.aussen.feuchte, 0)} % rF</span></div>
           <div class="grund">Nächster Wochenbericht: ${S.info.bericht.naechster ? fmtDate(Date.parse(S.info.bericht.naechster)) : "–"}</div>
@@ -231,13 +234,13 @@
   }
 
   // Generisch: statt der Empfehlungen der Integration eine Zusammenfassung des Betriebs
-  function betriebHtml(zustand) {
-    const liste = Object.values(zustand);
+  function betriebHtml(aktuell) {
+    // nur steuerbare Räume zählen (Bereichs-Thermostate und nicht verfügbare sind nur Anzeige)
+    const liste = Object.entries(aktuell).filter(([, r]) => r.app_modus && !nurAnzeige(r)).map(([slug, r]) => ({ modus: r.app_modus, name: roomName(slug) }));
     const anzahl = k => liste.filter(z => z.modus === k).length;
     const hand = liste.filter(z => z.modus === "hand").map(z => z.name);
-    const pause = liste.some(z => z.sommer_pause);
     const plan = !kann("plan_anwendung") ? "Die Plananwendung ist abgeschaltet (App-Konfiguration). Klima Studio schreibt keine Plantemperaturen."
-      : pause ? "Sommerbetrieb: Die Plananwendung ist pausiert." : "Klima Studio wendet die Heizpläne der Räume im Modus Plan an.";
+      : "Klima Studio wendet die Heizpläne der Räume im Modus Plan an. Im Sommerbetrieb ist die Plananwendung pausiert.";
     return `<section class="card glass"><div class="kicker">Betrieb</div>
       <p class="m0">${esc(plan)}</p>
       ${liste.length ? `<p class="small muted">Plan ${anzahl("plan")} · Hand ${anzahl("hand")} · Aus ${anzahl("aus")}${hand.length ? ` · im Modus Hand: ${esc(hand.join(", "))}` : ""}</p>` : ""}
@@ -550,10 +553,17 @@
     }
   }
 
+  // Generisch: Absenktemperatur des Raums (Override absenk) bzw. der App (/api/info absenktemperatur)
+  function absenkText(slug) {
+    const r = rooms().find(x => x.raum === slug);
+    const t = r && typeof r.absenk === "number" ? r.absenk : S.info && typeof S.info.absenktemperatur === "number" ? S.info.absenktemperatur : null;
+    return t == null ? "die Absenktemperatur" : `die Absenktemperatur von ${esc(num(t))} °C`;
+  }
+
   function planHinweis() {
     if (!generisch()) return "Außerhalb der Blöcke gilt die Grundtemperatur der Integration.";
     if (!kann("plan_anwendung")) return "Die Plananwendung ist abgeschaltet (App-Konfiguration). Der Plan wird gespeichert, aber nicht an die Thermostate übertragen.";
-    return "Die App wendet diesen Plan an, solange der Raum im Modus Plan ist. Außerhalb der Blöcke gilt die Absenktemperatur.";
+    return `Die App wendet diesen Plan an, solange der Raum im Modus Plan ist. Außerhalb der Blöcke gilt ${absenkText(S.plan && S.plan.raum)}.`;
   }
 
   function refreshBar(main) {
@@ -603,7 +613,7 @@
     const tage = fullDays(p.tage);
     let leer = false;
     if (DAYS.every(d => !tage[d].length)) {
-      leer = await modal("Heizplan vollständig leeren?", `<div class="warnbox">An keinem Tag ist ein Block eingetragen. Nach dem Speichern gilt in ${esc(roomName(p.raum))} dauerhaft die ${generisch() ? "Absenktemperatur der App" : "Grundtemperatur der Integration"}.</div>`,
+      leer = await modal("Heizplan vollständig leeren?", `<div class="warnbox">An keinem Tag ist ein Block eingetragen. Nach dem Speichern gilt in ${esc(roomName(p.raum))} dauerhaft ${generisch() ? absenkText(p.raum) : "die Grundtemperatur der Integration"}.</div>`,
         [{ label: "Abbrechen", value: false, cls: "ghost" }, { label: "Leeren bestätigen", value: true, cls: "danger" }]);
       if (!leer) return;
     }

@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "regeln": [
     {
       "id": "integration_pausiert",
@@ -1475,7 +1475,7 @@
       "betriebsart": "generisch",
       "bereich": "raum",
       "thema": "heizplan",
-      "prioritaet": 2,
+      "prioritaet": 3,
       "saison": "heizperiode",
       "plananwendung": true,
       "wenn": {
@@ -1486,6 +1486,11 @@
             "ref": "hand"
           },
           {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": false
+          },
+          {
             "nicht": {
               "wert": "anwesenheit.jemand_zuhause",
               "op": "==",
@@ -1494,9 +1499,9 @@
           }
         ]
       },
-      "titel": "Raum im Handbetrieb",
-      "text": "Der Raum {raum.name} steht im Handbetrieb auf {raum.soll} °C. Klima Studio wendet den Heizplan für diesen Raum nicht an.",
-      "begruendung": "Im Handbetrieb hält das Thermostat seinen Wert rund um die Uhr. Im Planbetrieb wird nur zu den Nutzungszeiten geheizt.",
+      "titel": "Heizplan noch nicht aktiv",
+      "text": "Für den Raum {raum.name} ist ein Heizplan hinterlegt, der Raum steht aber im Modus Hand. Wählen Sie Plan, damit Klima Studio den Heizplan anwendet.",
+      "begruendung": "Im Modus Hand bleibt die Temperatur am Thermostat, bis Sie sie ändern. Im Modus Plan heizt Klima Studio nach dem Heizplan und senkt außerhalb der Zeitblöcke auf die Absenktemperatur ab.",
       "massnahme": {
         "typ": "steuerung",
         "aktion": "modus",
