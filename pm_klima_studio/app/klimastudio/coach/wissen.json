@@ -664,11 +664,30 @@
             "wert": "raum.soll",
             "op": ">=",
             "ref": 16
+          },
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": false
+          },
+          {
+            "eine": [
+              {
+                "wert": "raum.hvac_action",
+                "op": "==",
+                "ref": "heating"
+              },
+              {
+                "wert": "raum.soll_ist_abstand",
+                "op": ">",
+                "ref": 0
+              }
+            ]
           }
         ]
       },
       "titel": "Handbetrieb heizt trotz Sommerbetrieb",
-      "text": "Der Raum {raum.name} steht im Handbetrieb auf {raum.soll} °C. Klima Studio pausiert außerhalb der Heizperiode nur Räume im Planbetrieb, dieser Raum kann daher weiterheizen.",
+      "text": "Der Raum {raum.name} steht im Handbetrieb auf {raum.soll} °C und heizt. Klima Studio pausiert außerhalb der Heizperiode nur Räume im Modus Plan, dieser Raum heizt daher weiter.",
       "begruendung": "Räume im Handbetrieb, mit Überbrückung oder Boost bleiben von der Sommerpause unberührt.",
       "massnahme": {
         "typ": "steuerung",
@@ -1861,12 +1880,17 @@
             "wert": "raum.soll",
             "op": ">=",
             "ref": 18
+          },
+          {
+            "wert": "raum.plan.leer",
+            "op": "==",
+            "ref": false
           }
         ]
       },
       "titel": "Niemand zu Hause, Raum im Handbetrieb",
-      "text": "Es ist niemand zu Hause. Der Raum {raum.name} heizt im Handbetrieb auf {raum.soll} °C.",
-      "begruendung": "Im Handbetrieb heizt der Raum unabhängig von Plan und Anwesenheit. Im Planbetrieb gilt die geplante Absenkung.",
+      "text": "Es ist niemand zu Hause. Der Raum {raum.name} heizt im Handbetrieb auf {raum.soll} °C, obwohl für ihn ein Heizplan vorliegt.",
+      "begruendung": "Im Handbetrieb heizt der Raum unabhängig von Plan und Anwesenheit. Im Modus Plan gilt der Heizplan mit seiner Absenkung.",
       "massnahme": {
         "typ": "steuerung",
         "aktion": "modus",

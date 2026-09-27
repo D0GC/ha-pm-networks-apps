@@ -23,6 +23,7 @@ from . import __version__
 from . import schedule as sch
 from . import steuerung as st
 from .adapter import PmKlimaErkennung, adapter_fuer, hinweis_betriebsart
+from .adapter.generisch import app_status
 from .coach import Coach, CoachStore
 from .config import DATA_DIR, Options, Room
 from .data import RANGES, DataService
@@ -367,7 +368,7 @@ async def api_current(request: web.Request) -> web.Response:
         {"empfehlung": ks.opts.empfehlung, "aussentemperatur": ks.opts.aussentemperatur, "aussenfeuchte": ks.opts.aussenfeuchte},
     )
     if ks.adapter.betriebsart == "generisch":
-        # nur generisch: App-Modus (plan | hand | aus) und Plan-Soll je Raum
+        # nur generisch: App-Modus (plan | hand | aus), Plan-Soll und Status (Timer, Sommer-Pause) je Raum
         by_id = {s["entity_id"]: s for s in await ks.client.get_states() if "entity_id" in s}
         await ks.adapter.vorbereiten(rooms, by_id)
         for room in rooms:
@@ -376,6 +377,8 @@ async def api_current(request: web.Request) -> web.Response:
                 zustand = ks.adapter.raum_zustand(room, by_id)
                 z["app_modus"] = zustand["modus"]
                 z["plan_soll"] = zustand["plan_soll"]
+                z["app_status"], z["status_bis"] = app_status(zustand)
+        result["sommerpause"] = ks.adapter.pause
     return web.json_response(result)
 
 

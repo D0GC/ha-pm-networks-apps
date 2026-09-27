@@ -16,6 +16,7 @@ from klimastudio.adapter.generisch import (
     HINWEIS_KUEHLEN,
     SOMMER_MAX_VERSUCHE,
     GenerischAdapter,
+    app_status,
 )
 from klimastudio.coach.engine import WISSEN_DATEI, Regelwerk, auswerten
 from klimastudio.coach.store import CoachStore
@@ -580,8 +581,57 @@ async def test_api_aktuell_und_info_generisch(app_client_generisch, studio_gener
     assert info["absenktemperatur"] == 17.0
 
 
+async def test_api_aktuell_status_generisch(app_client_generisch, studio_generisch, fake_generisch, uhr):
+    """app_status/status_bis je Raum und sommerpause global: die Übersicht leitet nichts mehr aus Soll ≠ Plan-Soll ab."""
+
+    async def aktuell() -> dict:
+        return await (await app_client_generisch.get("/api/aktuell")).json()
+
+    await plan(studio_generisch, "wohnzimmer")
+    d = await aktuell()
+    assert d["sommerpause"] is False
+    assert (d["raeume"]["wohnzimmer"]["app_status"], d["raeume"]["wohnzimmer"]["status_bis"]) == ("plan", None)
+    assert (d["raeume"]["kuche"]["app_status"], d["raeume"]["kuche"]["status_bis"]) == ("hand", None)
+    # Raum ohne Heizplan im Modus Plan: plan_inaktiv (nicht „folgt dem Heizplan“)
+    await plan(studio_generisch, "gaestezimmer_heizung")
+    assert (await aktuell())["raeume"]["gaestezimmer_heizung"]["app_status"] == "plan_inaktiv"
+    # Überbrückung mit Dauer und Boost: Status mit Ende des Timers
+    await aktion(studio_generisch, "wohnzimmer", {"aktion": "overlay", "temperatur": 22, "dauer": 60})
+    await aktion(studio_generisch, "kuche", {"aktion": "boost", "dauer": 30})
+    d = await aktuell()
+    wz, ku = d["raeume"]["wohnzimmer"], d["raeume"]["kuche"]
+    assert (wz["app_status"], wz["status_bis"]) == ("ueberbrueckung", (T0 + timedelta(minutes=60)).isoformat())
+    assert (ku["app_status"], ku["status_bis"]) == ("boost", (T0 + timedelta(minutes=30)).isoformat())
+    await aktion(studio_generisch, "wohnzimmer", {"aktion": "zurueck"})
+    # Sommerpause: Plan-Räume pausiert, Hand-Räume unverändert
+    await studio_generisch.adapter.pause_setzen(True)
+    d = await aktuell()
+    assert d["sommerpause"] is True
+    assert d["raeume"]["wohnzimmer"]["app_status"] == "sommerpause"
+    assert d["raeume"]["wohnzimmer"]["app_modus"] == "plan"
+    # Plananwendung ausgeschaltet: plan_inaktiv (auch in der Sommerpause)
+    studio_generisch.opts.plan_anwenden = False
+    assert (await aktuell())["raeume"]["wohnzimmer"]["app_status"] == "plan_inaktiv"
+
+
+def test_app_status_reihenfolge():
+    basis = {"modus": "plan", "overlay_bis": None, "boost_bis": None, "plan_anwendung": True, "sommer_pause": False}
+    basis["plan_soll"] = 17.0
+    assert app_status(basis) == ("plan", None)
+    assert app_status({**basis, "plan_soll": None}) == ("plan_inaktiv", None)  # Raum ohne Heizplan
+    assert app_status({**basis, "plan_hinweis": HINWEIS_PLAN_LEER}) == ("plan_inaktiv", None)
+    assert app_status({**basis, "sommer_pause": True, "plan_hinweis": HINWEIS_PLAN_LEER}) == ("sommerpause", None)
+    assert app_status({**basis, "overlay_bis": "dauerhaft"}) == ("ueberbrueckung", None)
+    bis = "2026-01-14T12:00:00+00:00"
+    assert app_status({**basis, "overlay_bis": bis, "sommer_pause": True}) == ("ueberbrueckung", bis)
+    assert app_status({**basis, "modus": "hand", "boost_bis": bis}) == ("boost", bis)
+    assert app_status({**basis, "modus": "hand", "sommer_pause": True}) == ("hand", None)
+    assert app_status({**basis, "modus": "aus", "plan_anwendung": False}) == ("aus", None)
+
+
 async def test_api_aktuell_und_info_pm_unveraendert(app_client):
     d = await (await app_client.get("/api/aktuell")).json()
-    assert not [r for r in d["raeume"].values() if "app_modus" in r or "plan_soll" in r]
+    assert not [r for r in d["raeume"].values() if {"app_modus", "plan_soll", "app_status", "status_bis"} & set(r)]
+    assert "sommerpause" not in d
     info = await (await app_client.get("/api/info")).json()
     assert "absenktemperatur" not in info

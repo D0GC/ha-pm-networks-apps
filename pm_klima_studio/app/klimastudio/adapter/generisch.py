@@ -83,6 +83,32 @@ HINWEIS_TADO = (
 HINWEIS_NICHT_UEBERNOMMEN = "Das Thermostat hat den zuletzt geschriebenen Sollwert {wert} °C nicht übernommen."
 
 
+def app_status(z: dict[str, Any]) -> tuple[str, str | None]:
+    """Status eines Raums für die Übersicht aus ``raum_zustand``: (Status, Ende des Timers als ISO oder None).
+
+    Status: ``boost`` | ``ueberbrueckung`` (Overlay) | ``aus`` | ``hand`` | ``plan_inaktiv`` (Plananwendung
+    ausgeschaltet, ``plan_hinweis`` gesetzt oder kein Heizplan/Plan-Soll) | ``sommerpause`` | ``plan``."""
+
+    def ende(bis: Any) -> str | None:
+        dt = zeit(bis)
+        return iso(dt) if dt else None
+
+    if z.get("boost_bis"):
+        return "boost", ende(z["boost_bis"])
+    if z.get("overlay_bis"):
+        return "ueberbrueckung", ende(z["overlay_bis"])
+    modus = z.get("modus")
+    if modus in ("aus", "hand"):
+        return modus, None
+    if not z.get("plan_anwendung"):
+        return "plan_inaktiv", None
+    if z.get("sommer_pause"):
+        return "sommerpause", None
+    if z.get("plan_hinweis") or z.get("plan_soll") is None:
+        return "plan_inaktiv", None
+    return "plan", None
+
+
 def _slug(text: str) -> str:
     slug = SLUG_UNGUELTIG_RE.sub("_", str(text).lower()).strip("_")
     return slug[:64] or "raum"

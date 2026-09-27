@@ -162,7 +162,7 @@
   }
   const lvl = (v, warn, bad) => v == null ? "" : v >= bad ? "bad" : v >= warn ? "warn" : "ok";
 
-  // Betriebsart generisch: App-Modus (plan | hand | aus) und Plan-Soll aus /api/aktuell (app_modus, plan_soll), Thermostat-Modus klein
+  // Betriebsart generisch: App-Modus (plan | hand | aus), Plan-Soll und Status aus /api/aktuell (app_modus, plan_soll, app_status), Thermostat-Modus klein
   const APP_MODUS = { plan: { cls: "auto", text: "Plan" }, hand: { cls: "heat", text: "Hand" }, aus: { cls: "off", text: "Aus" } };
   const HVAC_TEXT = { heat: "Heizen", off: "Aus", auto: "Auto", heat_cool: "Heizen/Kühlen", cool: "Kühlen", dry: "Entfeuchten", fan_only: "Lüfter", unavailable: "nicht verfügbar", unknown: "unbekannt" };
   const hvacText = m => m == null ? "–" : HVAC_TEXT[m] || String(m);
@@ -174,22 +174,41 @@
     if (nurAnzeige(cur)) return { cls: "off", text: "nur Anzeige" };
     return APP_MODUS[cur.app_modus] || { cls: "off", text: String(cur.app_modus) };
   }
+  // Ende eines Timers (Boost, Überbrückung): heute nur Uhrzeit, sonst mit Tag
+  function bisText(iso) {
+    const ms = iso ? Date.parse(iso) : NaN;
+    if (isNaN(ms)) return "";
+    const tag = d => new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: tz() }).format(d);
+    const uhr = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: tz() }).format(new Date(ms));
+    return tag(new Date(ms)) === tag(new Date()) ? `bis ${uhr} Uhr` : `bis ${fmtDate(ms)} Uhr`;
+  }
+  // Status aus /api/aktuell (app_status, status_bis); ältere Server ohne app_status: aus app_modus ableiten
+  function statusGen(cur) {
+    if (cur.app_status) return cur.app_status;
+    if (cur.app_modus !== "plan") return cur.app_modus;
+    return kann("plan_anwendung") ? "plan" : "plan_inaktiv";
+  }
   function statusLineGen(cur, slug) {
     if (!cur.app_modus) return cur.modus ? `Thermostat ${hvacText(cur.modus)}` : "";
     if (nurAnzeige(cur)) return `nicht steuerbar · Thermostat ${hvacText(cur.modus)}`;
     const p = [];
     const info = rooms().find(x => x.raum === slug);
-    const m = cur.app_modus;
-    if (m === "plan") {
-      const soll = typeof cur.soll === "number" ? cur.soll : null;
-      if (info && !info.schedule && cur.plan_soll == null) p.push("kein Heizplan");
-      else if (!kann("plan_anwendung")) p.push("Plananwendung abgeschaltet");
-      else if (cur.preset === "boost") p.push("Boost");
-      else if (cur.modus !== "off" && soll != null && cur.plan_soll != null && Math.abs(soll - cur.plan_soll) >= 0.25) p.push("weicht vom Plan ab");
-      else if (cur.modus !== "off") p.push("folgt dem Heizplan");
-      if (cur.plan_soll != null) p.push(`Plan-Soll ${num(cur.plan_soll)} °C`);
-    } else if (m === "hand") p.push("Handbetrieb");
-    else if (m === "aus") p.push("ausgeschaltet");
+    const st = statusGen(cur);
+    const soll = typeof cur.soll === "number" ? cur.soll : null;
+    if (st === "boost") p.push(["Boost", bisText(cur.status_bis)].filter(Boolean).join(" "));
+    else if (st === "ueberbrueckung") p.push(cur.status_bis ? `Überbrückung ${bisText(cur.status_bis)}` : "Überbrückung dauerhaft");
+    else if (st === "hand") p.push("Handbetrieb");
+    else if (st === "aus") p.push("ausgeschaltet");
+    else if (st === "sommerpause") p.push("Sommerpause, Heizplan pausiert");
+    else if (st === "plan_inaktiv") {
+      if (!kann("plan_anwendung")) p.push("Plananwendung abgeschaltet");
+      else if (info && !info.schedule && cur.plan_soll == null) p.push("kein Heizplan");
+      else p.push("Heizplan wird nicht angewendet");
+    } else if (st === "plan") {
+      if (cur.modus !== "off" && soll != null && cur.plan_soll != null && Math.abs(soll - cur.plan_soll) >= 0.25) p.push("weicht vom Plan ab");
+      else p.push("folgt dem Heizplan");
+    }
+    if (cur.app_modus === "plan" && cur.plan_soll != null && st !== "sommerpause") p.push(`Plan-Soll ${num(cur.plan_soll)} °C`);
     p.push(`Thermostat ${hvacText(cur.modus)}`);
     return p.join(" · ");
   }
@@ -223,7 +242,7 @@
     }).join("");
     main.innerHTML = `<div class="bar"><h2 class="grow">Übersicht</h2>${rangeChips()}</div>
       <div class="hero">
-        ${kann("empfehlungen_integration") ? `<section class="card glass"><div class="kicker">Empfehlungen der Integration</div><ul class="reco">${recos}</ul></section>` : betriebHtml(c.raeume || {})}
+        ${kann("empfehlungen_integration") ? `<section class="card glass"><div class="kicker">Empfehlungen der Integration</div><ul class="reco">${recos}</ul></section>` : betriebHtml(c.raeume || {}, !!c.sommerpause)}
         <section class="card glass"><div class="kicker">Außen</div>
           <div class="temps"><span class="ist">${num(c.aussen.temperatur)} °C</span><span class="soll">${num(c.aussen.feuchte, 0)} % rF</span></div>
           <div class="grund">Nächster Wochenbericht: ${S.info.bericht.naechster ? fmtDate(Date.parse(S.info.bericht.naechster)) : "–"}</div>
@@ -234,16 +253,21 @@
   }
 
   // Generisch: statt der Empfehlungen der Integration eine Zusammenfassung des Betriebs
-  function betriebHtml(aktuell) {
+  function betriebHtml(aktuell, sommerpause) {
     // nur steuerbare Räume zählen (Bereichs-Thermostate und nicht verfügbare sind nur Anzeige)
-    const liste = Object.entries(aktuell).filter(([, r]) => r.app_modus && !nurAnzeige(r)).map(([slug, r]) => ({ modus: r.app_modus, name: roomName(slug) }));
+    const liste = Object.entries(aktuell).filter(([, r]) => r.app_modus && !nurAnzeige(r))
+      .map(([slug, r]) => ({ modus: r.app_modus, status: statusGen(r), name: roomName(slug) }));
     const anzahl = k => liste.filter(z => z.modus === k).length;
-    const hand = liste.filter(z => z.modus === "hand").map(z => z.name);
+    const namen = f => liste.filter(f).map(z => z.name);
+    const hand = namen(z => z.modus === "hand");
+    const timer = namen(z => z.status === "boost" || z.status === "ueberbrueckung");
     const plan = !kann("plan_anwendung") ? "Die Plananwendung ist abgeschaltet (App-Konfiguration). Klima Studio schreibt keine Plantemperaturen."
-      : "Klima Studio wendet die Heizpläne der Räume im Modus Plan an. Im Sommerbetrieb ist die Plananwendung pausiert.";
+      : sommerpause ? "Sommerpause: Die Plananwendung ist pausiert, bis die Heizperiode wieder beginnt. Räume im Modus Hand bleiben unberührt."
+      : "Klima Studio wendet die Heizpläne der Räume im Modus Plan an.";
+    const extra = [hand.length ? `im Modus Hand: ${hand.join(", ")}` : "", timer.length ? `Boost/Überbrückung: ${timer.join(", ")}` : ""].filter(Boolean);
     return `<section class="card glass"><div class="kicker">Betrieb</div>
       <p class="m0">${esc(plan)}</p>
-      ${liste.length ? `<p class="small muted">Plan ${anzahl("plan")} · Hand ${anzahl("hand")} · Aus ${anzahl("aus")}${hand.length ? ` · im Modus Hand: ${esc(hand.join(", "))}` : ""}</p>` : ""}
+      ${liste.length ? `<p class="small muted">Plan ${anzahl("plan")} · Hand ${anzahl("hand")} · Aus ${anzahl("aus")}${extra.map(t => " · " + esc(t)).join("")}</p>` : ""}
     </section>`;
   }
 

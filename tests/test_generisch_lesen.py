@@ -241,7 +241,11 @@ def _ids(werk, app, raum, **g):
             {"anwesenheit": {"jemand_zuhause": True}},
             "handbetrieb_dauerhaft_generisch",
         ),
-        ({"modus": "hand", "soll": 21}, {"anwesenheit": {"jemand_zuhause": False}}, "abwesend_handbetrieb_generisch"),
+        (
+            {"modus": "hand", "soll": 21, "plan": PLAN_OK},
+            {"anwesenheit": {"jemand_zuhause": False}},
+            "abwesend_handbetrieb_generisch",
+        ),
         ({"modus": "aus", "ist": 13}, {"wetter": {"min_3tage": -3}}, "frost_raum_aus_generisch"),
         ({"modus": "aus", "ist": 14, "feuchte": 68}, {}, "raum_aus_feucht_generisch"),
         ({"modus": "aus", "ist": 14, "feuchte": 50}, {}, "raum_aus_kalt_generisch"),
@@ -279,9 +283,32 @@ def test_handbetrieb_generisch_nur_mit_heizplan(werk):
     assert "Wählen Sie Plan" in regel["text"]
 
 
+def test_hand_hinweise_generisch_nur_mit_heizplan(werk):
+    """Nach dem Erststart stehen alle Räume auf hand: Abwesenheits- und Sommerhinweis nur mit Heizplan."""
+    abwesend = {"anwesenheit": {"jemand_zuhause": False}}
+    hand = {"modus": "hand", "soll": 21}
+    rid = "abwesend_handbetrieb_generisch:wohnzimmer"
+    assert rid in _ids(werk, GEN, {**hand, "plan": PLAN_OK}, **abwesend)
+    assert rid not in _ids(werk, GEN, hand, **abwesend)
+    assert rid not in _ids(werk, GEN, {**hand, "plan": dict.fromkeys(PLAN_OK)}, **abwesend)
+    assert rid not in _ids(werk, GEN, {**hand, "plan": {**PLAN_OK, "leer": True}}, **abwesend)
+
+    sommer = {"heizperiode": {"aktiv": False}, "zeit": {"monat": 7, "stunde": 12, "wochentag": 2}}
+    heizt = {"modus": "hand", "soll": 20, "ist": 19, "soll_ist_abstand": 1, "overlay_aktiv": False}
+    rid = "sommer_handbetrieb_heizt_generisch:wohnzimmer"
+    assert rid in _ids(werk, GEN, {**heizt, "plan": PLAN_OK}, **sommer)
+    assert rid not in _ids(werk, GEN, heizt, **sommer)
+    assert rid not in _ids(werk, GEN, {**heizt, "plan": {**PLAN_OK, "leer": True}}, **sommer)
+    # Raum wärmer als der Sollwert und Thermostat heizt nicht: kein Hinweis
+    warm = {**heizt, "ist": 24, "soll_ist_abstand": -4, "hvac_action": "idle", "plan": PLAN_OK}
+    assert rid not in _ids(werk, GEN, warm, **sommer)
+    # Thermostat meldet heating: Hinweis
+    assert rid in _ids(werk, GEN, {**warm, "hvac_action": "heating"}, **sommer)
+
+
 def test_generische_regeln_im_sommer(werk):
     sommer = {"heizperiode": {"aktiv": False}, "zeit": {"monat": 7, "stunde": 12, "wochentag": 2}}
-    raum = {"modus": "hand", "soll": 20, "overlay_aktiv": False}
+    raum = {"modus": "hand", "soll": 20, "ist": 19, "soll_ist_abstand": 1, "overlay_aktiv": False, "plan": PLAN_OK}
     ids = _ids(werk, GEN, raum, **sommer)
     assert "sommer_handbetrieb_heizt_generisch:wohnzimmer" in ids
     ids = _ids(werk, GEN, {"overlay_aktiv": True, "soll": 21}, aussen={"temperatur": 18}, **sommer)
