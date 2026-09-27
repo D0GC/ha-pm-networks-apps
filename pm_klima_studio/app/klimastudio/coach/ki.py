@@ -24,10 +24,22 @@ MAX_ROH = 20000
 STEUERZEICHEN_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f​-‏‪-‮⁦-⁩]")
 ZAUN_RE = re.compile(r"```[a-zA-Z0-9_-]*\s*(.*?)\s*```", re.DOTALL)
 
-PROMPT = """Sie sind der Klima-Coach für ein Zuhause mit der Heizungsintegration PM Klima.
+EINLEITUNG_PM = """Sie sind der Klima-Coach für ein Zuhause mit der Heizungsintegration PM Klima.
 PM Klima steuert die Heizkörperthermostate raumweise nach Heizplänen (Zeitplänen), mit Fensterabschaltung,
 zeitweisen Temperaturen (Overlay), Boost und einer Sperre außerhalb der Heizperiode.
+"""
+EINLEITUNG_GENERISCH = """Sie sind der Klima-Coach für ein Zuhause mit Heizkörperthermostaten in Home Assistant.
+Die Thermostate sind Standard-Thermostate ohne die Integration PM Klima. Klima Studio verwaltet raumweise
+Heizpläne (Zeitpläne), zeigt Temperatur, Luftfeuchte, CO2 und Fensterzustände und steuert die Thermostate
+über die Standarddienste von Home Assistant.
+Jeder Raum hat einen Modus (raeume[].aktuell.modus): plan = Klima Studio stellt die Solltemperatur nach dem
+Heizplan ein (nur wenn plan_anwendung wahr ist), hand = der Plan wird nicht angewendet, das Thermostat hält
+seinen eigenen Wert, aus = Thermostat ausgeschaltet. Eine Überbrückung (overlay) setzt zeitweise eine andere
+Temperatur, ein Boost heizt kurz mit Höchstwert. Außerhalb der Heizperiode pausiert Klima Studio die Heizpläne.
+Eine Schimmel-Schätzung und Hinweise einer Heizungsintegration gibt es in diesem Zuhause nicht.
+"""
 
+REGELN = """
 Aufgabe: Geben Sie konkrete, datengestützte Tipps zum Heizen, Lüften und Energiesparen für dieses Zuhause.
 Regeln:
 - Schreiben Sie auf Deutsch in der Sie-Form, ruhig und sachlich, ohne Ausrufezeichen und ohne Emoji.
@@ -47,9 +59,12 @@ Antworten Sie ausschließlich mit einem JSON-Objekt ohne weiteren Text, genau in
 Lagebericht (JSON):
 """
 
+PROMPT = EINLEITUNG_PM + REGELN
+PROMPT_GENERISCH = EINLEITUNG_GENERISCH + REGELN
 
-def prompt(bericht: dict[str, Any]) -> str:
-    return PROMPT + json.dumps(bericht, ensure_ascii=False, separators=(",", ":"))
+
+def prompt(bericht: dict[str, Any], vorlage: str = PROMPT) -> str:
+    return vorlage + json.dumps(bericht, ensure_ascii=False, separators=(",", ":"))
 
 
 def bereinige_text(value: Any, limit: int = MAX_TEXT) -> str:

@@ -1,4 +1,22 @@
 configuration:
+  betriebsart:
+    name: Operating mode
+    description: >-
+      pm_networks if the PM Klima integration is installed (default). generisch for any thermostats
+      (climate entities) without PM Klima; rooms are then taken from the Home Assistant areas.
+  plan_anwenden:
+    name: Apply heating schedule
+    description: >-
+      Operating mode generisch only. Klima Studio sets the thermostats according to the schedules (default on).
+  sommer_aktion:
+    name: Summer behaviour
+    description: >-
+      Operating mode generisch only. plan_pausieren_und_aus pauses the schedules and turns rooms in plan
+      mode off (default), plan_pausieren only pauses the schedules.
+  absenktemperatur:
+    name: Setback temperature
+    description: >-
+      Operating mode generisch only. Target temperature outside the schedule blocks in °C (default 17).
   bericht_tag:
     name: Report day
     description: Weekday on which the weekly report is created (German day names).
@@ -12,7 +30,8 @@ configuration:
     name: Room overrides
     description: >-
       Optional. Each entry needs "raum" (slug such as wohnzimmer) and may set name, climate, schedule,
-      feuchte, schimmel, luftqualitaet, lueften, fenster, co2 or ausblenden: true.
+      feuchte, schimmel, luftqualitaet, lueften, fenster, co2, absenk (setback temperature of the room in °C,
+      operating mode generisch only) or ausblenden: true.
   praefix_klima:
     name: Thermostat prefix
     description: Prefix for automatic room discovery (default climate.pm_).
@@ -31,7 +50,7 @@ configuration:
   heizperiode_entitaet:
     name: Heating season switch
     description: >-
-      Switch the app sets for heating season (on) and summer (off). It must be configured as release entity in the PM Klima integration. Default input_boolean.pm_heizperiode.
+      Switch the app sets for heating season (on) and summer (off). It must be configured as release entity in the PM Klima integration. Default input_boolean.pm_heizperiode. Optional in operating mode generisch: if the entity exists, Klima Studio only mirrors the heating season to it (e.g. for your own automations).
   coach_ki_entitaet:
     name: AI service for the climate coach
     description: >-

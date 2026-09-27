@@ -16,7 +16,6 @@ from .. import analytics as an
 from .. import schedule as sch
 from ..config import Room
 from ..ha_client import HAError
-from ..steuerung import integration_status, raum_zustand
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,6 +97,15 @@ GLOBAL_PFADE = (
     "anwesenheit.jemand_zuhause",
     "anwesenheit.anzahl_zuhause",
 )
+# Ab 1.2.0: Betriebsart und Plananwendung durch Klima Studio (beide Betriebsarten vorhanden)
+APP_PFADE = (
+    "app.betriebsart",
+    "app.plan_anwendung",
+)
+# raum.modus je Betriebsart: pm_networks = Zustand der PM-Klima-Entität, generisch = App-Zustand
+MODI = {"pm_networks": ("auto", "heat", "off"), "generisch": ("plan", "hand", "aus")}
+# Nur mit PM Klima verfügbar; im Modus generisch null bzw. nicht im Lagebericht
+NUR_PM_RAUM = ("grund", "luftqualitaet", "lueften_empfohlen")
 
 
 def _bool_state(v: Any) -> bool | None:
@@ -269,23 +277,31 @@ def woche_aus_analyse(a: dict[str, Any] | None) -> dict[str, Any]:
 def raum_kontext(
     room: Room,
     by_id: dict[str, dict[str, Any]],
-    opts: Any,
+    adapter: Any,
     woche: dict[str, Any],
     plan: dict[str, Any],
 ) -> dict[str, Any]:
-    z = raum_zustand(room, by_id, opts)
+    """``adapter``: Adapter der Betriebsart (liefert den Raumzustand wie GET /api/steuerung).
+
+    Modus, Overlay und Boost stammen ausschließlich aus ``adapter.raum_zustand``: im Modus
+    generisch ist ``modus`` der App-Zustand (plan/hand/aus), ``overlay_bis``/``boost_bis``
+    kommen aus den Rück-Timern der App.
+    """
+    generisch = getattr(adapter, "betriebsart", None) == "generisch"
+    z = adapter.raum_zustand(room, by_id)
     cl = by_id.get(room.climate or "")
     overlay = z["overlay_bis"]
     boost = z["boost_bis"]
     lq = (by_id.get(room.luftqualitaet or "") or {}).get("state")
     ist, soll = z["ist"], z["soll"]
     slug = room.raum
-    return {
+    modi = MODI["generisch" if generisch else "pm_networks"]
+    ctx = {
         "slug": slug,
         "name": room.name,
         "nassraum": "bad" in slug or "dusch" in slug,
         "schlafraum": "schlaf" in slug,
-        "modus": z["modus"] if z["modus"] in ("auto", "heat", "off") else None,
+        "modus": z["modus"] if z["modus"] in modi else None,
         "preset": z["preset"],
         "grund": z["grund"],
         "hvac_action": z["hvac_action"],
@@ -305,6 +321,9 @@ def raum_kontext(
         "woche": woche,
         "plan": plan,
     }
+    if generisch:
+        ctx.update(dict.fromkeys(NUR_PM_RAUM))
+    return ctx
 
 
 # ------------------------------------------------------------------ Dienst
@@ -377,14 +396,20 @@ class LageDienst:
         states = await ks.client.get_states()
         by_id = {s["entity_id"]: s for s in states if "entity_id" in s}
         rooms = await ks.rooms()
+        try:
+            # Adapter-Zustand auffrischen (generisch: Heizpläne für Plantemperatur und nächsten Wechsel)
+            await ks.adapter.vorbereiten(rooms, by_id)
+        except HAError as err:
+            _LOGGER.info("Raumzustand nicht vollständig: %s", err)
         hp = await ks.heizperiode.status(states)
         tz = ks.tz
         now = datetime.now(tz)
         forecast = await self._forecast(by_id)
         wetter, wetter_tage = wetter_auswerten(forecast, now.date(), tz)
         plaene = await self._plaene(rooms)
-        integ = integration_status(by_id)
+        integ = ks.adapter.lage_integration(by_id)
         anw, personen = anwesenheit(by_id)
+        faehig = ks.adapter.faehigkeiten()
         mittel = [t["mittel"] for t in hp["tagesmittel"]]
         hp_aktiv = hp["aktiv"] if hp["aktiv"] is not None else hp["entscheidung"]["aktiv"]
         global_ctx: dict[str, Any] = {
@@ -397,16 +422,15 @@ class LageDienst:
             "wetter": wetter,
             "zeit": {"monat": now.month, "stunde": now.hour, "wochentag": now.weekday()},
             "heizperiode": {"aktiv": hp_aktiv, "modus": hp["modus"]},
-            "integration": {"aktiv": integ["aktiv"], "gesperrt": integ["gesperrt"]},
+            "integration": {"aktiv": integ.get("aktiv"), "gesperrt": integ.get("gesperrt")},
             "anwesenheit": anw,
+            "app": {"betriebsart": ks.adapter.betriebsart, "plan_anwendung": bool(faehig.get("plan_anwendung"))},
         }
         raeume = []
         for room in rooms:
             woche = await self._woche_fuer(room)
             plan = plan_kennzahlen(plaene.get(room.raum))
-            raeume.append({**global_ctx, "raum": raum_kontext(room, by_id, ks.opts, woche, plan)})
-        emp = by_id.get(ks.opts.empfehlung) or {}
-        liste = (emp.get("attributes") or {}).get("liste")
+            raeume.append({**global_ctx, "raum": raum_kontext(room, by_id, ks.adapter, woche, plan)})
         return {
             "global": global_ctx,
             "raeume": raeume,
@@ -417,7 +441,7 @@ class LageDienst:
                 "wetter_tage": wetter_tage,
                 "plaene": {slug: plan_kompakt(t) for slug, t in plaene.items()},
                 "personen": personen,
-                "empfehlungen": liste if isinstance(liste, list) else [],
+                "empfehlungen": ks.adapter.empfehlungen(by_id),
             },
         }
 
@@ -427,11 +451,14 @@ def lagebericht(lage: dict[str, Any], tipps: list[dict[str, Any]], mit_anwesenhe
     g = lage["global"]
     extra = lage["extra"]
     hp = extra["heizperiode"]
+    app = g.get("app") or {}
+    generisch = app.get("betriebsart") == "generisch"
+    weg = ("woche", "plan", *NUR_PM_RAUM) if generisch else ("woche", "plan")
     raeume = []
     for ctx in lage["raeume"]:
         r = dict(ctx["raum"])
         eintrag: dict[str, Any] = {"raum": r.pop("slug"), "name": r.pop("name")}
-        eintrag["aktuell"] = {k: v for k, v in r.items() if k not in ("woche", "plan")}
+        eintrag["aktuell"] = {k: v for k, v in r.items() if k not in weg}
         eintrag["woche"] = r["woche"]
         eintrag["plan"] = r["plan"]
         eintrag["heizplan"] = extra["plaene"].get(eintrag["raum"])
@@ -456,6 +483,11 @@ def lagebericht(lage: dict[str, Any], tipps: list[dict[str, Any]], mit_anwesenhe
             str(e.get("text"))[:200] for e in extra["empfehlungen"] if isinstance(e, dict) and e.get("text")
         ][:10],
     }
+    if generisch:
+        # Ohne PM Klima: keine Integration und keine Hinweise der Integration, dafür der App-Zustand
+        del bericht["integration"], bericht["empfehlungen_integration"]
+        bericht["betriebsart"] = "generisch"
+        bericht["plan_anwendung"] = bool(app.get("plan_anwendung"))
     if mit_anwesenheit:
         bericht["anwesenheit"] = g["anwesenheit"]
         bericht["personen"] = [

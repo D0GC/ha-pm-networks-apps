@@ -504,14 +504,14 @@ def test_plan_kennzahlen_ignores_setback_blocks():
 
 def test_presence_ignores_unknown_persons_without_helper():
     by_id = {
-        "person.dominik": {"state": "home", "attributes": {"friendly_name": "Dominik"}},
+        "person.johanna": {"state": "home", "attributes": {"friendly_name": "Johanna"}},
         "person.dashboard": {"state": "unknown", "attributes": {"friendly_name": "Dashboard"}},
         "person.tablet": {"state": "unavailable", "attributes": {}},
-        "person.gina_perina": {"state": "unknown", "attributes": {"friendly_name": "Gina Perina"}},
-        "input_boolean.gina_ist_zuhause": {"state": "off"},
+        "person.lena_berger": {"state": "unknown", "attributes": {"friendly_name": "Lena Berger"}},
+        "input_boolean.lena_ist_zuhause": {"state": "off"},
     }
     zusammen, personen = anwesenheit(by_id)
-    assert {p["name"]: p["zuhause"] for p in personen} == {"Dominik": True, "Gina Perina": False}
+    assert {p["name"]: p["zuhause"] for p in personen} == {"Johanna": True, "Lena Berger": False}
     assert zusammen == {"jemand_zuhause": True, "anzahl_zuhause": 1}
     zusammen, personen = anwesenheit({"person.dashboard": {"state": "unknown", "attributes": {}}})
     assert personen == []
@@ -539,7 +539,7 @@ async def test_lagebericht_with_presence(app_client, fake):
     assert d["anwesenheit"] is True
     lage = d["lage"]
     assert d["zeichen"] == len(json.dumps(lage, ensure_ascii=False, separators=(",", ":")))
-    assert {p["name"]: p["zuhause"] for p in lage["personen"]} == {"Dominik": "ja", "Gina Perina": "nein"}
+    assert {p["name"]: p["zuhause"] for p in lage["personen"]} == {"Johanna": "ja", "Lena Berger": "nein"}
     assert lage["anwesenheit"]["anzahl_zuhause"] == 1
     assert [r["raum"] for r in lage["raeume"]] == ["badezimmer", "kuche", "schlafzimmer", "wohnzimmer"]
     bad = lage["raeume"][0]
@@ -561,12 +561,12 @@ async def test_lagebericht_without_presence(aiohttp_client, ha_client, fake, tmp
     assert d["anwesenheit"] is False
     assert "personen" not in d["lage"]
     assert "anwesenheit" not in d["lage"]
-    assert "Dominik" not in json.dumps(d, ensure_ascii=False)
+    assert "Johanna" not in json.dumps(d, ensure_ascii=False)
     resp = await client.post("/api/coach/ki", json={})
     assert resp.status == 200
     instructions = next(c[2]["instructions"] for c in fake.service_calls if c[0] == "ai_task")
-    assert "Dominik" not in instructions
-    assert "Gina" not in instructions
+    assert "Johanna" not in instructions
+    assert "Lena" not in instructions
     info = await (await client.get("/api/info")).json()
     assert info["coach"] == {"ki_entitaet": "ai_task.claude_ai_task", "anwesenheit": False}
     ks.store.close()

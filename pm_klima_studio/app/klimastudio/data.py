@@ -57,6 +57,42 @@ class HistoryCache:
         return len(self._data)
 
 
+def soll_aus_attributen(attrs: dict[str, Any]) -> float | None:
+    """Solltemperatur; Thermostate mit Temperaturbereich (nur ``target_temp_low``/``high``,
+    z. B. im Modus heat_cool) liefern die Mitte des Bereichs bzw. die vorhandene Grenze."""
+    soll = an.to_float(attrs.get("temperature"))
+    if soll is not None:
+        return soll
+    low, high = an.to_float(attrs.get("target_temp_low")), an.to_float(attrs.get("target_temp_high"))
+    if low is not None and high is not None:
+        return round((low + high) / 2, 2)
+    return low if low is not None else high
+
+
+def soll_bereich(attrs: dict[str, Any]) -> dict[str, float | None] | None:
+    """Sollbereich eines Bereichs-Thermostats (ohne ``temperature``); sonst None."""
+    if an.to_float(attrs.get("temperature")) is not None:
+        return None
+    low, high = an.to_float(attrs.get("target_temp_low")), an.to_float(attrs.get("target_temp_high"))
+    if low is None and high is None:
+        return None
+    return {"min": low, "max": high}
+
+
+def _soll_series(recs: list[tuple[float, str, dict[str, Any]]]) -> an.Series:
+    # wie analytics.attr_series("temperature"), ergänzt um den Temperaturbereich
+    return an.dedupe(
+        [(ts, None if state in ("unavailable", "unknown") else soll_aus_attributen(attrs or {})) for ts, state, attrs in recs]
+    )
+
+
+def _action_bekannt(recs: list[tuple[float, str, dict[str, Any]]]) -> an.Series:
+    """Je verfügbarem Eintrag: meldet das Thermostat ``hvac_action``? (Heizstunden sonst unbekannt)."""
+    return an.dedupe(
+        [(ts, (attrs or {}).get("hvac_action") is not None) for ts, state, attrs in recs if state not in an.UNAVAILABLE]
+    )
+
+
 def _floor_chunk(ts: datetime) -> datetime:
     return ts.replace(minute=0, second=0, microsecond=0) - timedelta(hours=ts.hour)
 
@@ -64,8 +100,10 @@ def _floor_chunk(ts: datetime) -> datetime:
 class DataService:
     """Liest Historien aus HA und berechnet die Auswertungen je Raum."""
 
-    def __init__(self, client: HAClient, cache: HistoryCache | None = None) -> None:
+    def __init__(self, client: HAClient, cache: HistoryCache | None = None, generisch: bool = False) -> None:
         self.client = client
+        #: Betriebsart generisch: Sollbereich und unbekannte Heizstunden (pm_networks wie 1.1.1)
+        self.generisch = generisch
         self.cache = cache or HistoryCache()
         self._sem = asyncio.Semaphore(2)
 
@@ -90,9 +128,10 @@ class DataService:
                 recs = an.parse_history_rows(raw.get(entity_id, []))
                 value = {
                     "hvac_action": an.attr_series(recs, "hvac_action", numeric=False),
-                    "soll": an.attr_series(recs, "temperature"),
+                    "soll": _soll_series(recs) if self.generisch else an.attr_series(recs, "temperature"),
                     "ist": an.attr_series(recs, "current_temperature"),
                     "state": an.state_series(recs),
+                    "action_bekannt": _action_bekannt(recs),
                 }
             else:
                 raw = await self.client.history_during_period(
@@ -179,8 +218,13 @@ class DataService:
         if room.climate:
             clim = await safe(self.history("climate", room.climate, hist_start, end), "Heizung")
             if clim:
-                secs = an.heating_seconds(clim["hvac_action"], hist_start.timestamp(), e_ts)
-                out["heizstunden"] = round(secs / 3600, 2)
+                bekannt = clim.get("action_bekannt") or []
+                if self.generisch and bekannt and not any(v for _, v in bekannt):
+                    # Thermostat meldet kein hvac_action (viele Standard-Thermostate): Heizstunden unbekannt
+                    out["heizstunden"] = None
+                else:
+                    secs = an.heating_seconds(clim["hvac_action"], hist_start.timestamp(), e_ts)
+                    out["heizstunden"] = round(secs / 3600, 2)
                 if detail:
                     out["soll_ist"] = {
                         "soll": an.downsample(clim["soll"], hist_start.timestamp(), e_ts, MAX_POINTS),
@@ -285,13 +329,17 @@ class DataService:
         for room in rooms:
             cl = states.get(room.climate or "", {})
             attrs = cl.get("attributes") or {}
+            ist = attrs.get("current_temperature")
+            if ist is None and room.temperatur:
+                # nur Betriebsart generisch: Raumtemperatursensor des Bereichs
+                ist = an.to_float(states.get(room.temperatur, {}).get("state"))
             result[room.raum] = {
                 "modus": cl.get("state"),
                 "hvac_action": attrs.get("hvac_action"),
                 "anzeige": attrs.get("anzeige"),
                 "grund": attrs.get("grund"),
                 "preset": attrs.get("preset_mode"),
-                "ist": attrs.get("current_temperature"),
+                "ist": ist,
                 "soll": attrs.get("temperature"),
                 "feuchte": an.to_float(states.get(room.feuchte or "", {}).get("state")),
                 "schimmel": an.to_float(states.get(room.schimmel or "", {}).get("state")),
@@ -300,6 +348,10 @@ class DataService:
                 "fenster": states.get(room.fenster or "", {}).get("state"),
                 "lueften": states.get(room.lueften or "", {}).get("state"),
             }
+            bereich = soll_bereich(attrs)
+            if bereich is not None:
+                # Bereichs-Thermostat (heat_cool): Soll als Bereich, Feld nur dann vorhanden
+                result[room.raum]["soll_bereich"] = bereich
         emp = states.get(allgemein.get("empfehlung") or "", {})
         return {
             "raeume": result,

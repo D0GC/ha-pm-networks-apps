@@ -223,7 +223,9 @@ def build_report(
     tz: ZoneInfo,
     rng: random.Random | None = None,
     anlass: str = "zeitplan",
+    schimmel: bool = True,
 ) -> dict[str, Any]:
+    """``schimmel``: Schimmelrisiko wird erfasst (PM Klima); False für die Betriebsart generisch."""
     rng = rng or random.Random()
     rooms = [room_summary(a) for a in analyses]
     findings = find_findings(rooms)
@@ -244,7 +246,10 @@ def build_report(
         lines.append("Auffällig:")
         lines.extend(f"- {f['text']}" for f in findings)
     else:
-        lines.append("Auffällig: keine Räume. Feuchte, Schimmelrisiko und CO2 blieben im Rahmen.")
+        lines.append(
+            "Auffällig: keine Räume. "
+            + ("Feuchte, Schimmelrisiko und CO2 blieben im Rahmen." if schimmel else "Feuchte und CO2 blieben im Rahmen.")
+        )
     lines.append("")
     if windows:
         lines.append("Längste offene Fenster:")

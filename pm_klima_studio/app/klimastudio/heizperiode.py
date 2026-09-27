@@ -1,9 +1,14 @@
 """Heizperiode / Sommerautomatik.
 
-Die App schaltet ausschließlich eine Freigabe-Entität (Standard
+Betriebsart pm_networks: Die App schaltet ausschließlich eine Freigabe-Entität (Standard
 ``input_boolean.pm_heizperiode``), die in der Integration PM Klima als
 ``freigabe_entitaet`` eingetragen ist. on = Heizperiode, off = Sommer.
-Thermostate werden nie direkt angesprochen.
+Thermostate werden nie direkt angesprochen. Die Wirkung (Schalten, Verknüpfung) liegt im
+Adapter der Betriebsart (``adapter.heizperiode_anwenden``, ``adapter.freigabe_verknuepft``).
+
+Betriebsart generisch (``adapter.heizperiode_intern``): gleiche Automatik und Einstellungen, der
+Zustand ist aber intern (Sommer-Pause der Plananwendung im Adapter). ``heizperiode_entitaet`` wird
+nur als Spiegel geschaltet, wenn sie vorhanden und ein input_boolean ist.
 
 Schutz vor versehentlicher Sperre im Winter:
 
@@ -31,15 +36,17 @@ from zoneinfo import ZoneInfo
 from aiohttp import web
 
 from . import analytics as an
+from .adapter import Adapter, adapter_fuer
 from .coach.store import CoachStore, jetzt_iso
 from .config import Options
 from .ha_client import HAClient, HAError
-from .steuerung import SPERRE_SENSOR, json_fehler
+from .steuerung import json_fehler
 
 _LOGGER = logging.getLogger(__name__)
 
 EINSTELLUNG = "heizperiode"
 ZUSTAND = "heizperiode_zustand"
+ZUSTAND_INTERN = "heizperiode_intern"
 MODI = ("automatik", "heizperiode", "sommer")
 STANDARD: dict[str, Any] = {"modus": "automatik", "heizgrenze": 13.0, "hysterese": 2.0, "tage_start": 2, "tage_ende": 3}
 GRENZEN: dict[str, tuple[float, float]] = {"heizgrenze": (5, 20), "hysterese": (0, 5), "tage_start": (1, 7), "tage_ende": (1, 7)}
@@ -53,6 +60,10 @@ HINWEIS_EINRICHTEN = (
     "Die Entität {entitaet} wurde angelegt. Tragen Sie sie einmalig in der Integration PM Klima als Freigabe ein: "
     "Einstellungen → Geräte & Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → freigabe_entitaet. "
     "Steht die Freigabe beim Verknüpfen auf aus, schaltet die Integration Räume im Modus Auto sofort ab."
+)
+HINWEIS_SPIEGEL = (
+    "Die Entität {entitaet} wurde angelegt. Klima Studio schaltet sie als Spiegel der Heizperiode "
+    "(an = Heizperiode, aus = Sommer), zum Beispiel für eigene Automationen. Für die Heizperiode selbst ist sie nicht nötig."
 )
 
 
@@ -214,9 +225,11 @@ class Heizperiode:
         store: CoachStore,
         tz: Callable[[], ZoneInfo],
         bereit: Callable[[], bool] | None = None,
+        adapter: Adapter | None = None,
     ) -> None:
         self.client = client
         self.opts = opts
+        self.adapter = adapter or adapter_fuer(opts, client, store)
         self.store = store
         self._tz = tz
         self._bereit = bereit or (lambda: True)
@@ -236,6 +249,11 @@ class Heizperiode:
     # ------------------------------------------------------------- Hintergrund
 
     def start(self) -> None:
+        if not self.adapter.heizperiode_wirksam:
+            _LOGGER.info(
+                "Heizperiode in der Betriebsart %s noch ohne Wirkung, keine Hintergrundprüfung", self.adapter.betriebsart
+            )
+            return
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run())
 
@@ -317,7 +335,7 @@ class Heizperiode:
     async def _schalten(self, an_: bool, grund: str, modus: str, entitaet: str | None = None) -> bool:
         """Freigabe schalten. True nur, wenn der Zustand danach tatsächlich stimmt."""
         eid = entitaet or self.entitaet
-        await self.client.call_service("input_boolean", "turn_on" if an_ else "turn_off", {"entity_id": eid})
+        await self.adapter.heizperiode_anwenden(an_, eid)
         nachher = await self._zustand_lesen(eid)
         if _an_aus(nachher) is not an_:
             _LOGGER.warning(
@@ -340,6 +358,8 @@ class Heizperiode:
         ``erzwingen`` gesetzt ist oder der Winterschutz greift. Eine manuelle Umschaltung in HA
         wird sonst respektiert und als Abweichung vermerkt.
         """
+        if self.adapter.heizperiode_intern:
+            return await self._pruefen_intern(erzwingen, states)
         async with self._lock:
             einst = await self.einstellungen()
             by_id = {s["entity_id"]: s for s in states or await self.client.get_states()}
@@ -408,6 +428,8 @@ class Heizperiode:
     # ------------------------------------------------------------- API
 
     async def status(self, states: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        if self.adapter.heizperiode_intern:
+            return await self._status_intern(states)
         einst = await self.einstellungen()
         by_id = {s["entity_id"]: s for s in states or await self.client.get_states()}
         st = by_id.get(self.entitaet)
@@ -420,10 +442,7 @@ class Heizperiode:
         e_aktiv, grund = await self._entscheidung(einst, bisher, aktiv)
         if st is None:
             grund = f"{grund} Die Freigabe-Entität {self.entitaet} fehlt."
-        verknuepft: bool | None = None
-        sperre = by_id.get(SPERRE_SENSOR)
-        if zustand == "off" and sperre is not None:
-            verknuepft = (sperre.get("attributes") or {}).get("sperre_grund") == "freigabe_aus"
+        verknuepft = self.adapter.freigabe_verknuepft(by_id, zustand)
         abweichung: dict[str, Any] | None = None
         if st is not None and e_aktiv is not None and aktiv is not e_aktiv:
             eigen = gespeichert.get("entitaet") == self.entitaet
@@ -456,9 +475,10 @@ class Heizperiode:
         }
 
     async def einstellen(self, body: dict[str, Any]) -> dict[str, Any]:
+        self.adapter.heizperiode_pruefen_schreiben()
         alt = await self.einstellungen()
         neu = pruefe_einstellungen(body, alt)
-        if neu["modus"] in ("heizperiode", "sommer") and not self.schreibbar:
+        if neu["modus"] in ("heizperiode", "sommer") and not self.schreibbar and not self.adapter.heizperiode_intern:
             raise json_fehler(
                 web.HTTPConflict,
                 f"{self.entitaet} ist kein input_boolean und kann von Klima Studio nicht geschaltet werden.",
@@ -470,7 +490,12 @@ class Heizperiode:
             # holt die nächste Prüfung es nach (feste Modi werden ohnehin immer durchgesetzt).
             async with self._lock:
                 zustand = await self._zustand_gespeichert()
-                if zustand.get("entitaet") == self.entitaet:
+                if self.adapter.heizperiode_intern:
+                    intern = await self._intern_gespeichert()
+                    if intern:
+                        intern["angewendet"] = False
+                        await self.store.einstellung_setzen(ZUSTAND_INTERN, intern)
+                elif zustand.get("entitaet") == self.entitaet:
                     zustand["angewendet"] = False
                     await self.store.einstellung_setzen(ZUSTAND, zustand)
         await self.store.einstellung_setzen(EINSTELLUNG, neu)
@@ -501,6 +526,9 @@ class Heizperiode:
         return True, "Neu angelegt ohne eindeutiges Ende der Heizperiode: Heizperiode als sicherer Startzustand."
 
     async def einrichten(self) -> dict[str, Any]:
+        self.adapter.heizperiode_pruefen_schreiben()
+        if self.adapter.heizperiode_intern:
+            return await self._einrichten_spiegel()
         states = await self.client.get_states()
         if any(s.get("entity_id") == self.entitaet for s in states):
             raise json_fehler(web.HTTPConflict, f"{self.entitaet} ist bereits vorhanden.", "vorhanden")
@@ -529,6 +557,115 @@ class Heizperiode:
                 await self.store.einstellung_setzen(ZUSTAND, zustand)
         out = await self.status()
         out["hinweis"] = HINWEIS_EINRICHTEN.format(entitaet=neu)
+        return out
+
+    # ------------------------------------------------------------- Interner Zustand (generisch)
+
+    async def _intern_gespeichert(self) -> dict[str, Any]:
+        raw = await self.store.einstellung(ZUSTAND_INTERN)
+        return raw if isinstance(raw, dict) else {}
+
+    async def _pruefen_intern(self, erzwingen: bool, states: list[dict[str, Any]] | None) -> dict[str, Any]:
+        """Automatik wie mit Freigabe-Entität; geschaltet wird der interne Zustand über den Adapter.
+
+        Geschrieben wird bei geänderter Entscheidung, bei ausstehendem Anwenden oder mit ``erzwingen``.
+        Eine manuelle Abweichung gibt es nicht (die Spiegel-Entität wird nur nachgeführt).
+        """
+        async with self._lock:
+            einst = await self.einstellungen()
+            by_id = {s["entity_id"]: s for s in states or await self.client.get_states()}
+            gespeichert = await self._intern_gespeichert()
+            ist = self.adapter.heizperiode_ist()
+            bisher = gespeichert.get("entscheidung") if isinstance(gespeichert.get("entscheidung"), bool) else None
+            aktiv, grund = await self._entscheidung(einst, bisher, ist)
+            if aktiv is None:
+                return {"aktiv": aktiv, "grund": grund}
+            neu = dict(gespeichert)
+            if aktiv != bisher or erzwingen:
+                neu["angewendet"] = False
+            # Allererste Entscheidung der Automatik: nur den Zustand merken, keine Thermostate umstellen
+            erstentscheid = not gespeichert and einst["modus"] == "automatik"
+            neu["entscheidung"] = aktiv
+            try:
+                if ist is not aktiv or not neu.get("angewendet"):
+                    neu["angewendet"] = False
+                    await self.adapter.heizperiode_anwenden(aktiv, self.entitaet, erstentscheid=erstentscheid)
+                    if self.adapter.heizperiode_ist() is aktiv:
+                        neu["angewendet"] = True
+                        if ist is not aktiv:
+                            neu["letzte_aenderung"] = jetzt_iso()
+                            text = f"Heizperiode {'begonnen' if aktiv else 'beendet (Sommer)'}: {grund}"
+                            _LOGGER.info("%s", text)
+                            await self.store.ereignis(
+                                "heizperiode",
+                                None,
+                                text,
+                                {"aktiv": aktiv, "modus": einst["modus"], "intern": True, "grund": grund},
+                            )
+                else:
+                    await self.adapter.heizperiode_spiegeln(aktiv, self.entitaet, by_id)
+            finally:
+                if neu != gespeichert:
+                    await self.store.einstellung_setzen(ZUSTAND_INTERN, neu)
+            return {"aktiv": aktiv, "grund": grund}
+
+    async def _status_intern(self, states: list[dict[str, Any]] | None) -> dict[str, Any]:
+        einst = await self.einstellungen()
+        by_id = {s["entity_id"]: s for s in states or await self.client.get_states()}
+        st = by_id.get(self.entitaet)
+        spiegel = st.get("state") if st else None
+        aktiv = self.adapter.heizperiode_ist()
+        gespeichert = await self._intern_gespeichert()
+        bisher = gespeichert.get("entscheidung") if isinstance(gespeichert.get("entscheidung"), bool) else None
+        tage, werte = await self.tagesmittel()
+        e_aktiv, grund = await self._entscheidung(einst, bisher, aktiv)
+        abweichung: dict[str, Any] | None = None
+        if e_aktiv is not None and aktiv is not e_aktiv:
+            abweichung = {
+                "ist": "on" if aktiv else "off",
+                "soll": "on" if e_aktiv else "off",
+                "seit": None,
+                "ausstehend": True,
+                "winterschutz_ab": None,
+            }
+        return {
+            **einst,
+            "entitaet": self.entitaet,
+            "vorhanden": st is not None,
+            "zustand": None if aktiv is None else ("on" if aktiv else "off"),
+            "aktiv": aktiv,
+            "verknuepft": None,
+            "intern": True,
+            "spiegel": spiegel if spiegel in ("on", "off") else None,
+            "sommer_aktion": self.opts.sommer_aktion,
+            "tagesmittel": [{"datum": t.isoformat(), "mittel": v} for t, v in zip(tage, werte, strict=True)],
+            "entscheidung": {"aktiv": e_aktiv, "grund": grund},
+            "abweichung": abweichung,
+            "letzte_aenderung": gespeichert.get("letzte_aenderung"),
+            "naechste_pruefung": self.naechste.isoformat(timespec="seconds") if self.naechste else None,
+            "aussen_aktuell": an.to_float((by_id.get(self.opts.aussentemperatur) or {}).get("state")),
+        }
+
+    async def _einrichten_spiegel(self) -> dict[str, Any]:
+        """Generisch (optional): input_boolean als Spiegel der Heizperiode anlegen und nachführen."""
+        states = await self.client.get_states()
+        if any(s.get("entity_id") == self.entitaet for s in states):
+            raise json_fehler(web.HTTPConflict, f"{self.entitaet} ist bereits vorhanden.", "vorhanden")
+        if not self.schreibbar:
+            raise json_fehler(
+                web.HTTPConflict, f"{self.entitaet} ist kein input_boolean und kann nicht angelegt werden.", "nur_lesen"
+            )
+        object_id = self.entitaet.split(".", 1)[1]
+        name = "PM Heizperiode" if object_id == "pm_heizperiode" else object_id.replace("_", " ").title()
+        result = await self.client.input_boolean_create(name, "mdi:radiator")
+        neu = f"input_boolean.{result.get('id')}" if isinstance(result, dict) and result.get("id") else self.entitaet
+        if neu != self.entitaet:
+            _LOGGER.warning("Angelegt wurde %s statt %s", neu, self.entitaet)
+        aktiv = self.adapter.heizperiode_ist()
+        by_id = {s["entity_id"]: s for s in await self.client.get_states() if "entity_id" in s}
+        await self.adapter.heizperiode_spiegeln(aktiv is not False, neu, by_id)
+        out = await self.status()
+        out["hinweis"] = HINWEIS_SPIEGEL.format(entitaet=neu)
         return out
 
 

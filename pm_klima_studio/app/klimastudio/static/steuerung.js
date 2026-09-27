@@ -10,7 +10,10 @@
     { key: "0", wert: 0, label: "Dauerhaft" },
   ];
   const BOOST = [30, 60, 120];
-  const MODI = [{ m: "auto", label: "Auto" }, { m: "heat", label: "Hand" }, { m: "off", label: "Aus" }];
+  const MODI_PM = [{ m: "auto", label: "Auto" }, { m: "heat", label: "Hand" }, { m: "off", label: "Aus" }];
+  // Betriebsart generisch: App-Modus je Raum (Plan = App wendet den Heizplan an, Hand = nicht, Aus = Thermostat aus)
+  const MODI_GEN = [{ m: "plan", label: "Plan" }, { m: "hand", label: "Hand" }, { m: "aus", label: "Aus" }];
+  const GRUND_GEN = { zeitplan: "Folgt dem Heizplan", sommer: "Sommer: Plananwendung pausiert", overlay: "Abweichung vom Plan", boost: "Boost", manuell: "Handbetrieb", aus: "Ausgeschaltet" };
   const HP_MODI = [{ m: "automatik", label: "Automatik" }, { m: "heizperiode", label: "Heizperiode" }, { m: "sommer", label: "Sommer" }];
   const HP_GRENZEN = {
     heizgrenze: { min: 5, max: 20, step: 0.5, label: "Heizgrenze", unit: "°C" },
@@ -34,6 +37,10 @@
   const esc = s => A().esc(s);
   const num = (v, d) => A().num(v, d);
   const aktiv = () => A().S.tab === "steuerung";
+  const gen = () => A().generisch();
+  const MODI = () => gen() ? MODI_GEN : MODI_PM;
+  // Modusnamen der Betriebsart: Plan-/Auto-Modus, Handmodus, Aus
+  const M = () => gen() ? { plan: "plan", hand: "hand", aus: "aus" } : { plan: "auto", hand: "heat", aus: "off" };
   // Nur der sichtbare Container des jüngsten Laufs darf beschrieben werden.
   const aktuell = view => aktiv() && st.view === view && view.isConnected;
   const $v = sel => st.view.querySelector(sel);
@@ -101,7 +108,7 @@
     c.vorschlagModus = null;
     if (aktion === "modus") {
       c.fokus = "modus";
-      if (["auto", "heat", "off"].includes(pf.modus)) c.vorschlagModus = pf.modus;
+      if (MODI().some(x => x.m === pf.modus)) c.vorschlagModus = pf.modus;
     } else if (aktion === "zurueck") {
       c.fokus = "zurueck";
     } else if (aktion === "boost") {
@@ -109,7 +116,7 @@
     } else {
       if (typeof pf.temperatur === "number") {
         const t = klemme(r, pf.temperatur);
-        if (r.modus === "heat") c.hand = t; else c.temp = t;
+        if (r.modus === M().hand) c.hand = t; else c.temp = t;
       }
       if (pf.dauer === null || typeof pf.dauer === "number") c.dauer = pf.dauer;
       c.geaendert = true;
@@ -117,14 +124,16 @@
     }
     let text = "Die Werte des Coachs sind vorbelegt. Bitte prüfen und bestätigen.";
     if (aktion === "modus" && c.vorschlagModus) {
-      const ziel = (MODI.find(x => x.m === c.vorschlagModus) || {}).label;
+      const ziel = (MODI().find(x => x.m === c.vorschlagModus) || {}).label;
       text = c.vorschlagModus === r.modus ? `Der Raum ist bereits im Modus ${ziel}.` : `Vorschlag des Coachs: Betriebsart ${ziel}. Bitte prüfen und selbst umschalten.`;
     } else if (aktion === "zurueck") {
       text = r.overlay_bis || r.boost_bis ? "Vorschlag des Coachs: Zurück zum Plan. Bitte prüfen und bestätigen." : "Der Raum folgt bereits dem Plan.";
     } else if (aktion === "boost") {
       text = "Vorschlag des Coachs: Boost. Bitte Dauer wählen.";
-    } else if (r.modus === "off") {
-      text = "Der Raum ist ausgeschaltet. Eine vorübergehende Änderung ist nur im Modus Auto möglich.";
+    } else if (r.modus === M().aus) {
+      text = `Der Raum ist ausgeschaltet. Eine vorübergehende Änderung ist nur im Modus ${gen() ? "Plan" : "Auto"} möglich.`;
+    } else if (gen() && !r.steuerbar) {
+      text = r.steuerbar_grund || "Dieser Raum kann nicht gesteuert werden.";
     }
     A().toast(text);
   }
@@ -160,7 +169,8 @@
       <section class="card glass hp-card" id="hp-card">${hpHtml(d.heizperiode, raeume)}</section>
       <div class="ctl-grid">${raeume.map(([slug, r]) => `<article class="card glass ctl-card" data-raum="${esc(slug)}">${cardHtml(slug, r)}</article>`).join("")
         || '<div class="empty">Keine Räume erkannt.</div>'}</div>
-      <p class="small muted">Alle Befehle laufen über die Integration PM Klima. Klima Studio schaltet die Thermostate nicht selbst.</p>`;
+      <p class="small muted">${gen() ? "Klima Studio schaltet die Thermostate direkt über Home Assistant. Der Modus Plan wendet den Heizplan des Raums an, im Modus Hand bleibt die Temperatur, bis Sie sie ändern."
+        : "Alle Befehle laufen über die Integration PM Klima. Klima Studio schaltet die Thermostate nicht selbst."}</p>`;
     main.querySelector("#ctl-reload").addEventListener("click", async ev => {
       const btn = ev.currentTarget;
       btn.disabled = true;
@@ -176,6 +186,7 @@
     const zustand = hp.aktiv === true ? "Heizperiode aktiv" : hp.aktiv === false ? "Sommerbetrieb" : "Zustand unbekannt";
     const zcls = hp.aktiv === true ? "heat" : hp.aktiv === false ? "auto" : "off";
     const e = hp.entscheidung || {};
+    if (gen() || hp.intern) return hpHtmlGen(hp, raeume, zustand, zcls, e);
     const anleitung = `Einstellungen → Geräte &amp; Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → Freigabe-Entität: <b>${esc(hp.entitaet)}</b>. ${esc(WARN_VERKNUEPFEN)}`;
     let hinweise = "";
     if (hp.vorhanden === false) {
@@ -237,6 +248,68 @@
       </details>`;
   }
 
+  // Generisch: Zustand intern, keine Freigabe-Entität; statt der Freigabe-Hinweise Sommer-Aktion und Plananwendung
+  const SOMMER_AKTION = {
+    plan_pausieren_und_aus: "Plananwendung pausieren und Räume im Modus Plan ausschalten",
+    plan_pausieren: "Plananwendung pausieren, Thermostate bleiben eingeschaltet",
+  };
+  function planAnwendung() { return A().kann("plan_anwendung"); }
+  function hpHtmlGen(hp, raeume, zustand, zcls, e) {
+    let hinweise = "";
+    const abw = hp.abweichung;
+    if (abw) {
+      hinweise += `<div class="warnbox small" id="hp-abweichung">Ermittelt ist ${abw.soll === "on" ? "Heizperiode" : "Sommer"}, eingestellt ist ${abw.ist === "on" ? "Heizperiode" : "Sommer"}. Klima Studio stellt bei der nächsten Prüfung um.</div>`;
+    }
+    if (hp.aktiv === false) {
+      const hand = raeume.filter(([, r]) => r.modus === "hand" && r.hvac_modus !== "off").map(([, r]) => r.name);
+      if (hand.length) hinweise += `<div class="infobox small">Räume im Modus Hand bleiben im Sommerbetrieb unberührt und heizen weiter: ${esc(hand.join(", "))}.</div>`;
+    }
+    if (!planAnwendung()) {
+      hinweise += `<div class="infobox small">Die Plananwendung ist abgeschaltet. Die Heizperiode wirkt sich daher nur auf das Ein- und Ausschalten aus. Die Plananwendung wird in der App-Konfiguration (Option plan_anwenden) geschaltet.</div>`;
+    }
+    const aktion = SOMMER_AKTION[hp.sommer_aktion] || (hp.sommer_aktion ? String(hp.sommer_aktion) : "–");
+    const spiegel = hp.vorhanden ? `${esc(hp.entitaet)}${hp.spiegel ? ` · ${hp.spiegel === "on" ? "an" : "aus"}` : ""}` : "keine (optional)";
+    const spiegelHilfe = !hp.vorhanden && String(hp.entitaet || "").startsWith("input_boolean.")
+      ? `<details class="hp-hint small muted"><summary>Optional: Spiegel-Entität für eigene Automationen</summary>
+          <p class="m0">Klima Studio kann <b>${esc(hp.entitaet)}</b> als Helfer anlegen und als Spiegel der Heizperiode schalten (an = Heizperiode, aus = Sommer). Für die Heizperiode selbst ist sie nicht nötig.</p>
+          <div class="actions left"><button class="btn" id="hp-einrichten">Anlegen</button></div></details>` : "";
+    return `<div class="hp-head">
+        <div><div class="kicker">Heizperiode</div><h3 class="hp-title"><span class="mode ${zcls}">${esc(zustand)}</span></h3></div>
+        ${seg("hp-modus", HP_MODI.map(x => ({ v: x.m, label: x.label })), hp.modus, false)}
+      </div>
+      ${hinweise}
+      <div class="hp-body">
+        <dl class="kv">
+          <dt>Entscheidung</dt><dd>${esc(e.grund || "–")}</dd>
+          <dt>Außen aktuell</dt><dd>${grad(hp.aussen_aktuell)}</dd>
+          <dt>Sommer-Aktion</dt><dd>${esc(aktion)}</dd>
+          <dt>Plananwendung</dt><dd>${planAnwendung() ? "an" : "aus"} <span class="small muted">· geschaltet in der App-Konfiguration</span></dd>
+          <dt>Spiegel</dt><dd>${spiegel}</dd>
+          <dt>Letzte Änderung</dt><dd>${fmtZeit(hp.letzte_aenderung)}</dd>
+          <dt>Nächste Prüfung</dt><dd>${fmtZeit(hp.naechste_pruefung)}</dd>
+        </dl>
+        <figure class="hp-chart">${balken(hp)}<figcaption class="chart-legend">
+          <span><i style="background:#F2B35C"></i>Heizgrenze ${grad(hp.heizgrenze)}</span>
+          <span><i class="dash"></i>Ende ab ${grad(hp.heizgrenze != null ? hp.heizgrenze + (hp.hysterese || 0) : null)}</span></figcaption></figure>
+      </div>
+      ${spiegelHilfe}
+      ${hpEinstellungen(hp)}`;
+  }
+
+  function hpEinstellungen(hp) {
+    const f = st.hpEntwurf || hp;
+    const feld = k => {
+      const g = HP_GRENZEN[k];
+      return `<label class="field"><span>${g.label} (${g.unit})</span><input type="text" id="hp-${k}" value="${esc(typeof f[k] === "number" ? num(f[k]) : f[k] ?? "")}" inputmode="${g.step < 1 ? "decimal" : "numeric"}" maxlength="4" autocomplete="off"></label>`;
+    };
+    return `<details class="hp-set" id="hp-set" ${st.hpOffen ? "open" : ""}><summary>Einstellungen der Automatik</summary>
+        <div class="fields">${Object.keys(HP_GRENZEN).map(feld).join("")}</div>
+        <p class="small muted">Die Heizperiode beginnt, wenn die Tagesmittel der letzten Tage (Tage bis Beginn) alle unter der Heizgrenze liegen.
+          Sie endet, wenn die Tagesmittel der letzten Tage (Tage bis Ende) alle mindestens Heizgrenze plus Hysterese erreichen.</p>
+        <div class="actions left"><button class="btn primary" id="hp-save">Speichern</button><button class="btn ghost" id="hp-reset">Zurücksetzen</button></div>
+      </details>`;
+  }
+
   function balken(hp) {
     const werte = (hp.tagesmittel || []).slice(-7);
     if (!werte.length) return `<div class="empty small">Keine Tagesmittel verfügbar.</div>`;
@@ -285,7 +358,8 @@
       if (b.dataset.v === hp.modus) return;
       if (b.dataset.v === "sommer") {
         const ok = await A().modal("Auf Sommer umstellen?",
-          `<p>Im Sommerbetrieb schaltet die Integration alle Räume im Modus Auto ab. Räume im Modus Hand, Abweichungen und Boost heizen weiter.</p>`,
+          gen() || hp.intern ? `<p>Im Sommerbetrieb pausiert Klima Studio die Plananwendung.${hp.sommer_aktion === "plan_pausieren" ? " Die Thermostate bleiben eingeschaltet." : " Räume im Modus Plan werden ausgeschaltet und zu Beginn der Heizperiode wieder eingeschaltet."} Räume im Modus Hand bleiben unberührt.</p>`
+            : `<p>Im Sommerbetrieb schaltet die Integration alle Räume im Modus Auto ab. Räume im Modus Hand, Abweichungen und Boost heizen weiter.</p>`,
           [{ label: "Abbrechen", value: false, cls: "ghost" }, { label: "Sommer einschalten", value: true, cls: "danger" }]);
         if (!ok) return;
       }
@@ -351,6 +425,10 @@
       const { data } = await A().api("heizperiode/einrichten", { method: "POST", body: {} });
       st.data.heizperiode = data;
       if (aktiv()) zeichneHp();
+      if (gen() || data.intern) {
+        await A().modal("Spiegel angelegt", `<p>${esc(data.hinweis || "Die Entität wurde angelegt.")}</p>`, [{ label: "Verstanden", value: true, cls: "primary" }]);
+        return;
+      }
       await A().modal("Freigabe angelegt", `<p>${esc(data.hinweis || "Die Freigabe-Entität wurde angelegt.")}</p>
         <div class="infobox small">Tragen Sie die Entität einmalig in der Integration ein:<br>
         Einstellungen → Geräte &amp; Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → Freigabe-Entität: <b>${esc(data.entitaet)}</b></div>`,
@@ -366,6 +444,7 @@
   // ------------------------------------------------------------------ Raumkarten
   function modeInfo(r) {
     if (r.hvac_action === "heating") return { cls: "heizt", text: "heizt" };
+    if (gen()) return { plan: { cls: "auto", text: "Plan" }, hand: { cls: "heat", text: "Hand" }, aus: { cls: "off", text: "Aus" } }[r.modus] || { cls: "off", text: r.modus || "unbekannt" };
     return { auto: { cls: "auto", text: "Auto" }, heat: { cls: "heat", text: "Hand" }, off: { cls: "off", text: "Aus" } }[r.modus] || { cls: "off", text: r.modus || "unbekannt" };
   }
 
@@ -379,6 +458,7 @@
   }
 
   function cardHtml(slug, r) {
+    if (gen()) return cardHtmlGen(slug, r);
     const m = modeInfo(r);
     const kopf = `<div class="room-head"><h3>${esc(r.name || slug)}</h3><span class="mode ${esc(m.cls)}">${esc(m.text)}</span></div>
       <div class="temps"><span class="ist">${grad(r.ist)}</span><span class="soll">Soll ${grad(r.soll)}</span>${r.feuchte != null ? `<span class="soll">${num(r.feuchte, 0)} %</span>` : ""}</div>
@@ -402,11 +482,88 @@
       teil = `<p class="small muted m0">Der Raum ist ausgeschaltet. Ein Boost heizt trotzdem für die gewählte Dauer.</p>`;
     }
     return kopf + (z.length ? `<div class="ctl-status">${z.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : "") + plan +
-      `<div class="ctl-block ${c.fokus === "modus" ? "hl" : ""}"><div class="lbl">Betriebsart</div>${seg("seg-" + slug, MODI.map(x => ({ v: x.m, label: x.label })), r.modus, false, c.fokus === "modus" ? c.vorschlagModus : null)}</div>
+      `<div class="ctl-block ${c.fokus === "modus" ? "hl" : ""}"><div class="lbl">Betriebsart</div>${seg("seg-" + slug, MODI_PM.map(x => ({ v: x.m, label: x.label })), r.modus, false, c.fokus === "modus" ? c.vorschlagModus : null)}</div>
       ${teil}
       <div class="ctl-block ${c.fokus === "boost" || c.fokus === "zurueck" ? "hl" : ""}"><div class="lbl">Boost auf ${grad(r.max_temp)}</div>
         <div class="ctl-row wrap">${BOOST.map(b => `<button class="btn" data-a="boost" data-d="${b}">${b} min</button>`).join("")}
         ${r.overlay_bis || r.boost_bis ? `<span class="grow"></span><button class="btn ${c.fokus === "zurueck" ? "vorschlag" : "ghost"}" data-a="zurueck">Zurück zum Plan</button>` : ""}</div></div>`;
+  }
+
+  function sollGen(r) {
+    if (r.soll != null) return grad(r.soll);
+    if (r.soll_bereich) return `${esc(num(r.soll_bereich.min))}–${esc(num(r.soll_bereich.max))} °C`;
+    return "–";
+  }
+
+  function overlayBlock(c) {
+    const dauern = DAUER.slice();
+    if (c.dauer != null && !dauern.some(x => x.wert === c.dauer)) dauern.splice(3, 0, { key: String(c.dauer), wert: c.dauer, label: dauerText(c.dauer) });
+    return `<div class="ctl-block ${c.fokus === "overlay" ? "hl" : ""}"><div class="lbl">Vorübergehend ändern</div>
+        <div class="ctl-row">${stepper("ov", c.temp)}
+        <button class="btn primary" data-a="overlay">Anwenden</button></div>
+        <div class="chips small-chips" data-dauer>${dauern.map(x => `<button type="button" class="chip ${x.wert === c.dauer ? "active" : ""}" data-d="${x.wert == null ? "" : x.wert}">${esc(x.label)}</button>`).join("")}</div></div>`;
+  }
+
+  const NICHT_UEBERNOMMEN = "Das Thermostat hat den Sollwert nicht übernommen.";
+  const HAND_MIT_PLAN = "Wählen Sie Plan, damit die App den Heizplan anwendet.";
+
+  // Generisch: Hinweise des Raumzustands (plan_hinweis, hinweise, nicht_uebernommen, Hand mit Heizplan)
+  function hinweiseGen(r, info) {
+    let h = "";
+    if (r.nicht_uebernommen) h += `<div class="warnbox small ctl-warn">${esc(NICHT_UEBERNOMMEN)}</div>`;
+    if (r.plan_hinweis) h += `<div class="small ctl-hinweis">${esc(r.plan_hinweis)}</div>`;
+    const planAn = r.plan_anwendung !== false && A().kann("plan_anwendung");
+    if (r.steuerbar && r.modus === "hand" && info && info.schedule && planAn) h += `<div class="small muted ctl-hinweis">${esc(HAND_MIT_PLAN)}</div>`;
+    // Der Einzelhinweis „nicht übernommen“ steht schon als Warnung oben
+    const liste = (Array.isArray(r.hinweise) ? r.hinweise : []).filter(x => x && !(r.nicht_uebernommen && /nicht übernommen\.?$/.test(x)));
+    if (liste.length) h += `<ul class="ctl-hinweise small muted">${liste.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
+    return h;
+  }
+
+  // Betriebsart generisch: App-Modus Plan/Hand/Aus, Thermostat-Modus klein, Plan-Soll
+  function cardHtmlGen(slug, r) {
+    const info = A().rooms().find(x => x.raum === slug);
+    const ohnePlan = !!info && !info.schedule;
+    const m = r.steuerbar ? modeInfo(r) : { cls: "off", text: "nur Anzeige" };
+    const grund = !r.steuerbar || (ohnePlan && r.grund === "zeitplan") ? "" : GRUND_GEN[r.grund] || r.grund || "";
+    const kopf = `<div class="room-head"><h3>${esc(r.name || slug)}</h3><span class="mode ${esc(m.cls)}">${esc(m.text)}</span></div>
+      <div class="temps"><span class="ist">${grad(r.ist)}</span><span class="soll">Soll ${sollGen(r)}</span>${r.feuchte != null ? `<span class="soll">${num(r.feuchte, 0)} %</span>` : ""}</div>
+      <div class="grund">${esc(grund)}${grund ? " · " : ""}<span class="hvac">Thermostat ${esc(A().hvacText(r.hvac_modus))}${r.preset && r.preset !== "none" ? ` · Preset ${esc(r.preset)}` : ""}</span></div>`;
+    if (!r.steuerbar) return kopf + `<p class="small muted">${esc(r.steuerbar_grund || "Dieser Raum kann nicht gesteuert werden.")}</p>` + hinweiseGen(r, info);
+    const c = ctlFor(slug, r);
+    const z = statusZeilen(r);
+    let plan = "";
+    if (r.modus === "plan") {
+      const teile = [];
+      if (ohnePlan && r.plan_soll == null) teile.push("Kein Heizplan zugeordnet");
+      else {
+        teile.push(`Plan-Soll ${grad(r.plan_soll)}`);
+        if (r.naechster_wechsel) teile.push(`nächster Wechsel ${fmtZeit(r.naechster_wechsel)}`);
+      }
+      if (r.plan_anwendung === false || !A().kann("plan_anwendung")) teile.push("Plananwendung abgeschaltet (App-Konfiguration)");
+      else if (r.sommer_pause) teile.push("Sommer: Plananwendung pausiert");
+      plan = `<div class="small muted">${teile.join(" · ")}</div>`;
+    }
+    let teil = "";
+    if (r.modus === "plan") teil = overlayBlock(c);
+    else if (r.modus === "hand") {
+      teil = `<div class="ctl-block ${c.fokus === "overlay" ? "hl" : ""}"><div class="lbl">Handwert</div>
+        <div class="ctl-row">${stepper("hand", c.hand)}<button class="btn primary" data-a="temperatur">Übernehmen</button></div></div>`;
+    } else if (r.modus === "aus") {
+      teil = `<p class="small muted m0">Der Raum ist ausgeschaltet. Stellen Sie ihn auf Plan oder Hand, um wieder zu heizen.</p>`;
+    }
+    const modi = MODI_GEN.filter(x => !Array.isArray(r.modi) || r.modi.includes(x.m) || x.m === r.modus);
+    const ausAn = r.modus === "aus" || r.hvac_modus === "off";
+    const boostLbl = r.boost_art === "preset" ? "Boost (Preset des Thermostats)" : `Boost auf ${grad(r.boost_temp ?? r.max_temp)}`;
+    const zurueck = r.overlay_bis || r.boost_bis
+      ? `<span class="grow"></span><button class="btn ${c.fokus === "zurueck" ? "vorschlag" : "ghost"}" data-a="zurueck">${r.modus === "plan" ? "Zurück zum Plan" : "Boost beenden"}</button>` : "";
+    const boost = ausAn
+      ? (zurueck ? `<div class="ctl-block"><div class="ctl-row wrap">${zurueck}</div></div>` : "")
+      : `<div class="ctl-block ${c.fokus === "boost" || c.fokus === "zurueck" ? "hl" : ""}"><div class="lbl">${boostLbl}</div>
+        <div class="ctl-row wrap">${BOOST.map(b => `<button class="btn" data-a="boost" data-d="${b}">${b} min</button>`).join("")}${zurueck}</div></div>`;
+    return kopf + (z.length ? `<div class="ctl-status">${z.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : "") + plan + hinweiseGen(r, info) +
+      `<div class="ctl-block ${c.fokus === "modus" ? "hl" : ""}"><div class="lbl">Betriebsart</div>${seg("seg-" + slug, modi.map(x => ({ v: x.m, label: x.label })), r.modus, false, c.fokus === "modus" ? c.vorschlagModus : null)}</div>
+      ${teil}${boost}`;
   }
 
   function dauerText(min) {
@@ -440,13 +597,15 @@
     card.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", async () => {
       const modus = b.dataset.v;
       if (modus === r.modus) return;
-      if (modus === "off") {
+      if (modus === M().aus) {
         const ok = await A().modal(`${r.name || slug} ausschalten?`,
-          `<p>Der Raum bleibt ausgeschaltet, bis Sie ihn wieder auf Auto oder Hand stellen. Der Heizplan wird bis dahin nicht ausgeführt.</p>`,
+          gen() ? `<p>Klima Studio schaltet das Thermostat aus. Der Raum bleibt ausgeschaltet, bis Sie ihn wieder auf Plan oder Hand stellen. Der Heizplan wird bis dahin nicht angewendet.</p>`
+            : `<p>Der Raum bleibt ausgeschaltet, bis Sie ihn wieder auf Auto oder Hand stellen. Der Heizplan wird bis dahin nicht ausgeführt.</p>`,
           [{ label: "Abbrechen", value: false, cls: "ghost" }, { label: "Ausschalten", value: true, cls: "danger" }]);
         if (!ok) return;
       }
-      senden(slug, { aktion: "modus", modus }, { auto: "Auf Zeitplan umgestellt.", heat: "Auf Handbetrieb umgestellt.", off: "Raum ausgeschaltet." }[modus]);
+      senden(slug, { aktion: "modus", modus }, { auto: "Auf Zeitplan umgestellt.", heat: "Auf Handbetrieb umgestellt.", off: "Raum ausgeschaltet.",
+        plan: "Der Raum folgt dem Heizplan.", hand: "Auf Handbetrieb umgestellt.", aus: "Raum ausgeschaltet." }[modus]);
     }));
     card.querySelectorAll("[data-a]").forEach(b => b.addEventListener("click", () => {
       const a = b.dataset.a;
@@ -456,7 +615,7 @@
         senden(slug, body, `${grad(c.temp)} ${bis} gesetzt.`);
       } else if (a === "temperatur") senden(slug, { aktion: "temperatur", temperatur: c.hand }, `Handwert ${grad(c.hand)} gesetzt.`);
       else if (a === "boost") senden(slug, { aktion: "boost", dauer: Number(b.dataset.d) }, `Boost für ${b.dataset.d} min gestartet.`);
-      else if (a === "zurueck") senden(slug, { aktion: "zurueck" }, "Der Raum folgt wieder dem Plan.");
+      else if (a === "zurueck") senden(slug, { aktion: "zurueck" }, gen() && r.modus !== "plan" ? "Boost beendet." : "Der Raum folgt wieder dem Plan.");
     }));
   }
 

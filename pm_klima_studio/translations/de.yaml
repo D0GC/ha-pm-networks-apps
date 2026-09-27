@@ -1,4 +1,22 @@
 configuration:
+  betriebsart:
+    name: Betriebsart
+    description: >-
+      pm_networks, wenn die Integration PM Klima installiert ist (Standard). generisch für beliebige
+      Thermostate (climate-Entitäten) ohne PM Klima; Räume ergeben sich dann aus den Bereichen in Home Assistant.
+  plan_anwenden:
+    name: Heizplan anwenden
+    description: >-
+      Nur Betriebsart generisch. Klima Studio stellt die Thermostate nach den Heizplänen ein (Standard an).
+  sommer_aktion:
+    name: Verhalten im Sommer
+    description: >-
+      Nur Betriebsart generisch. plan_pausieren_und_aus pausiert die Heizpläne und schaltet Räume im
+      Plan-Modus aus (Standard), plan_pausieren pausiert nur die Heizpläne.
+  absenktemperatur:
+    name: Absenktemperatur
+    description: >-
+      Nur Betriebsart generisch. Solltemperatur außerhalb der Heizplan-Blöcke in °C (Standard 17).
   bericht_tag:
     name: Berichtstag
     description: Wochentag, an dem der Wochenbericht erstellt wird.
@@ -14,7 +32,8 @@ configuration:
     name: Räume anpassen
     description: >-
       Optional. Je Eintrag "raum" (Kürzel wie wohnzimmer) und beliebig name, climate, schedule,
-      feuchte, schimmel, luftqualitaet, lueften, fenster, co2 oder ausblenden: true.
+      feuchte, schimmel, luftqualitaet, lueften, fenster, co2, absenk (Absenktemperatur des Raums in °C,
+      nur Betriebsart generisch) oder ausblenden: true.
   praefix_klima:
     name: Präfix Thermostate
     description: Präfix für die automatische Raumerkennung (Standard climate.pm_).
@@ -33,7 +52,7 @@ configuration:
   heizperiode_entitaet:
     name: Freigabe Heizperiode
     description: >-
-      Schalter, den die App für Heizperiode (an) und Sommer (aus) setzt. Er muss in der Integration PM Klima als Freigabe eingetragen sein. Standard input_boolean.pm_heizperiode.
+      Schalter, den die App für Heizperiode (an) und Sommer (aus) setzt. Er muss in der Integration PM Klima als Freigabe eingetragen sein. Standard input_boolean.pm_heizperiode. In der Betriebsart generisch optional: Ist die Entität vorhanden, schaltet Klima Studio sie nur als Spiegel der Heizperiode (z. B. für eigene Automationen).
   coach_ki_entitaet:
     name: KI-Dienst für den Klima-Coach
     description: >-

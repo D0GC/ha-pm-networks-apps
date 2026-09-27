@@ -135,7 +135,7 @@ class Coach:
                 resp = await self.ks.client.call_service(
                     "ai_task",
                     "generate_data",
-                    {"task_name": "klima_coach", "entity_id": eid, "instructions": ki.prompt(bericht)},
+                    {"task_name": "klima_coach", "entity_id": eid, "instructions": self.ks.adapter.ki_prompt(bericht)},
                     return_response=True,
                     timeout=ki.KI_TIMEOUT,
                 )

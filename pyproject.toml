@@ -1,6 +1,6 @@
 [project]
 name = "pm-klima-studio-dev"
-version = "1.1.1"
+version = "1.2.0"
 requires-python = ">=3.12"
 description = "Entwicklungsumgebung für die Home-Assistant-App PM Klima Studio"
 

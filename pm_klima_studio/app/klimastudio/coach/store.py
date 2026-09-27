@@ -18,7 +18,7 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3  # 2: app_raeume (Betriebsart generisch: App-Zustand je Raum); 3: climate, gesehen, nachgeschrieben
 MAX_KI_LAEUFE = 50
 MAX_EREIGNISSE = 2000
 
@@ -53,7 +53,59 @@ CREATE TABLE IF NOT EXISTS ereignisse (
     daten TEXT
 );
 CREATE INDEX IF NOT EXISTS ereignisse_typ ON ereignisse (typ);
+CREATE TABLE IF NOT EXISTS app_raeume (
+    raum TEXT PRIMARY KEY,
+    modus TEXT NOT NULL DEFAULT 'hand',
+    overlay_bis TEXT,
+    overlay_temp REAL,
+    boost_bis TEXT,
+    boost_art TEXT,
+    vor_temp REAL,
+    vor_preset TEXT,
+    geschrieben REAL,
+    geschrieben_zeit TEXT,
+    hvac_vor_aus TEXT,
+    hvac_vor_sommer TEXT,
+    sommer_aus_offen INTEGER NOT NULL DEFAULT 0,
+    geaendert TEXT,
+    climate TEXT,
+    gesehen REAL,
+    nachgeschrieben INTEGER NOT NULL DEFAULT 0
+);
 """
+
+# Spalten, die mit einer Schema-Version hinzugekommen sind (ALTER TABLE bei älteren Datenbanken)
+SPALTEN_NEU: dict[str, tuple[tuple[str, str], ...]] = {
+    "app_raeume": (
+        ("climate", "TEXT"),
+        ("gesehen", "REAL"),
+        ("nachgeschrieben", "INTEGER NOT NULL DEFAULT 0"),
+    ),
+}
+
+# Spalten von app_raeume (ohne raum) mit Standardwerten. Neue Räume starten im Modus ``hand``
+# (Klima Studio schreibt nichts); ``plan`` nur nach ausdrücklicher Wahl je Raum.
+APP_RAUM_FELDER: dict[str, Any] = {
+    "modus": "hand",
+    "overlay_bis": None,
+    "overlay_temp": None,
+    "boost_bis": None,
+    "boost_art": None,
+    "vor_temp": None,
+    "vor_preset": None,
+    "geschrieben": None,
+    "geschrieben_zeit": None,
+    "hvac_vor_aus": None,
+    "hvac_vor_sommer": None,
+    "sommer_aus_offen": False,
+    "geaendert": None,
+    # climate-Entität, zu der der Zustand gehört (abweichend: Zustand wird verworfen)
+    "climate": None,
+    # vom Thermostat nach dem Schreiben übernommener (beobachteter) Sollwert
+    "gesehen": None,
+    # 0 = geschrieben, 1 = einmal erneut geschrieben, 2 = „nicht übernommen“ gemeldet
+    "nachgeschrieben": 0,
+}
 
 
 def jetzt_iso() -> str:
@@ -90,6 +142,11 @@ class CoachStore:
             if version > SCHEMA_VERSION:
                 _LOGGER.warning("coach.db hat neuere Schema-Version %s (erwartet %s)", version, SCHEMA_VERSION)
             conn.executescript(SCHEMA)
+            for tabelle, spalten in SPALTEN_NEU.items():
+                vorhanden = {r[1] for r in conn.execute(f"PRAGMA table_info({tabelle})")}
+                for name, typ in spalten:
+                    if name not in vorhanden:
+                        conn.execute(f"ALTER TABLE {tabelle} ADD COLUMN {name} {typ}")
             if version < SCHEMA_VERSION:
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             conn.commit()
@@ -216,6 +273,56 @@ class CoachStore:
             return self._lauf_aus_zeile(row) if row else None
 
         return await self._run(fn)
+
+    # ------------------------------------------------------------- App-Zustand (Betriebsart generisch)
+
+    def app_raeume_lesen(self) -> dict[str, dict[str, Any]]:
+        """App-Zustand aller Räume (synchron, kleine Tabelle): raum -> Felder ``APP_RAUM_FELDER``."""
+
+        def fn(c: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for r in c.execute("SELECT * FROM app_raeume"):
+                werte = {k: r[k] for k in APP_RAUM_FELDER}
+                werte["sommer_aus_offen"] = bool(werte["sommer_aus_offen"])
+                werte["nachgeschrieben"] = int(werte["nachgeschrieben"] or 0)
+                out[r["raum"]] = werte
+            return out
+
+        return self._ausfuehren(fn)
+
+    async def app_raum_setzen(self, raum: str, werte: dict[str, Any]) -> None:
+        """App-Zustand eines Raums vollständig schreiben (fehlende Felder: Standardwert)."""
+        felder = {k: werte.get(k, v) for k, v in APP_RAUM_FELDER.items()}
+        felder["sommer_aus_offen"] = 1 if felder["sommer_aus_offen"] else 0
+        felder["nachgeschrieben"] = int(felder["nachgeschrieben"] or 0)
+        felder["geaendert"] = jetzt_iso()
+        spalten = ", ".join(felder)
+        platz = ", ".join("?" for _ in felder)
+        update = ", ".join(f"{k} = excluded.{k}" for k in felder)
+        sql = f"INSERT INTO app_raeume (raum, {spalten}) VALUES (?, {platz}) ON CONFLICT(raum) DO UPDATE SET {update}"  # noqa: S608
+        daten = (raum, *felder.values())
+
+        def fn(c: sqlite3.Connection) -> None:
+            c.execute(sql, daten)
+
+        await self._run(fn)
+
+    async def app_raum_loeschen(self, raum: str) -> None:
+        """App-Zustand eines Raums verwerfen (z. B. nach geändertem Raumthermostat)."""
+
+        def fn(c: sqlite3.Connection) -> None:
+            c.execute("DELETE FROM app_raeume WHERE raum = ?", (raum,))
+
+        await self._run(fn)
+
+    def einstellung_lesen(self, schluessel: str) -> Any:
+        """Einstellung synchron lesen (für den App-Zustand beim ersten Zugriff)."""
+
+        def fn(c: sqlite3.Connection) -> Any:
+            row = c.execute("SELECT wert FROM einstellungen WHERE schluessel = ?", (schluessel,)).fetchone()
+            return _json_laden(row["wert"]) if row else None
+
+        return self._ausfuehren(fn)
 
     # ------------------------------------------------------------- Ereignisse
 

@@ -1,5 +1,5 @@
 name: PM Klima Studio
-version: "1.1.1"
+version: "1.2.0"
 slug: pm_klima_studio
 description: >-
   Heizplan-Editor, Steuerung, Klima-Auswertungen, Klima-Coach und Wochenbericht für die Integration PM Klima.
@@ -15,12 +15,14 @@ ingress_port: 8099
 panel_icon: mdi:thermometer-lines
 panel_title: Klima Studio
 panel_admin: true
+homeassistant: "2026.9.0"
 homeassistant_api: true
 hassio_api: false
 stage: stable
 timeout: 20
 watchdog: "http://[HOST]:[PORT:8099]/api/health"
 options:
+  betriebsart: pm_networks
   bericht_tag: sonntag
   bericht_uhrzeit: "18:00"
   bericht_notify: []
@@ -31,6 +33,10 @@ options:
   wetter_entitaet: weather.dwd_zuhause
   log_level: info
 schema:
+  betriebsart: list(pm_networks|generisch)?
+  plan_anwenden: bool?
+  sommer_aktion: list(plan_pausieren_und_aus|plan_pausieren)?
+  absenktemperatur: float(5,25)?
   bericht_tag: list(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)
   bericht_uhrzeit: match(^([01][0-9]|2[0-3]):[0-5][0-9]$)
   bericht_notify:
@@ -46,6 +52,7 @@ schema:
       lueften: str?
       fenster: str?
       co2: str?
+      absenk: float(5,25)?
       ausblenden: bool?
   praefix_klima: str?
   praefix_heizplan: str?

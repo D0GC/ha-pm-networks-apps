@@ -22,8 +22,10 @@ from aiohttp import web
 from . import __version__
 from . import schedule as sch
 from . import steuerung as st
+from .adapter import PmKlimaErkennung, adapter_fuer, hinweis_betriebsart
+from .adapter.generisch import app_status
 from .coach import Coach, CoachStore
-from .config import DATA_DIR, Options, Room, discover_rooms
+from .config import DATA_DIR, Options, Room
 from .data import RANGES, DataService
 from .ha_client import HAClient, HAError
 from .heizperiode import Heizperiode
@@ -118,7 +120,17 @@ class KlimaStudio:
     def __init__(self, opts: Options, client: HAClient, data_dir: Path = DATA_DIR, wissen_pfad: Path | None = None) -> None:
         self.opts = opts
         self.client = client
-        self.data = DataService(client)
+        self.store = CoachStore(data_dir / "coach.db")
+        self.adapter = adapter_fuer(opts, client, self.store)
+        self.adapter.tz = lambda: self.tz
+        self.adapter.raeume_quelle = self.rooms
+        # Nur Betriebsart generisch: Hintergrund für Rück-Timer und (mit plan_anwenden) die Heizpläne
+        self.plananwendung = self.adapter.plananwendung
+        self.pm_erkennung = PmKlimaErkennung(client, ROOM_TTL)
+        generisch = self.adapter.betriebsart == "generisch"
+        if generisch:
+            self.adapter.pm_erkennung = self.pm_erkennung  # type: ignore[attr-defined]
+        self.data = DataService(client, generisch=generisch)
         self.archive = ReportArchive(data_dir / "berichte.json")
         self.tz = ZoneInfo("Europe/Berlin")
         self._rooms: list[Room] = []
@@ -129,8 +141,9 @@ class KlimaStudio:
         self.scheduler: WeeklyScheduler | None = None
         self._tz_loaded = False
         self._tz_task: asyncio.Task | None = None
-        self.store = CoachStore(data_dir / "coach.db")
-        self.heizperiode = Heizperiode(client, opts, self.store, tz=lambda: self.tz, bereit=lambda: self._tz_loaded)
+        self.heizperiode = Heizperiode(
+            client, opts, self.store, tz=lambda: self.tz, bereit=lambda: self._tz_loaded, adapter=self.adapter
+        )
         self.coach = Coach(self, self.store, wissen_pfad)
 
     # ------------------------------------------------------------- Start
@@ -167,6 +180,8 @@ class KlimaStudio:
         )
         self.scheduler.start()
         self.heizperiode.start()
+        if self.plananwendung is not None:
+            self.plananwendung.start(bereit=lambda: self._tz_loaded)
 
     async def stop(self) -> None:
         if self._tz_task:
@@ -176,6 +191,8 @@ class KlimaStudio:
         if self.scheduler:
             await self.scheduler.stop()
         await self.heizperiode.stop()
+        if self.plananwendung is not None:
+            await self.plananwendung.stop()
         self.store.close()
         await self.client.close()
 
@@ -184,7 +201,7 @@ class KlimaStudio:
     async def rooms(self, refresh: bool = False) -> list[Room]:
         if refresh or not self._rooms or time.monotonic() - self._rooms_at > ROOM_TTL:
             states = await self.client.get_states()
-            self._rooms = discover_rooms(states, self.opts)
+            self._rooms = await self.adapter.raeume(states)
             self._rooms_at = time.monotonic()
             self._registry_ids.clear()  # Zuordnung Entität -> Speicher-ID neu ermitteln
         return self._rooms
@@ -241,7 +258,9 @@ class KlimaStudio:
             analyses = []
             for room in rooms:
                 analyses.append(await self.data.room_analysis(room, "7d", end=end, detail=False))
-            report = build_report(analyses, start, end, self.tz, anlass=anlass)
+            # Schimmelrisiko nur mit Daten (PM Klima bzw. zugeordnete Schimmelsensoren)
+            schimmel = self.adapter.faehigkeiten()["schimmel"] or any(r.schimmel for r in rooms)
+            report = build_report(analyses, start, end, self.tz, anlass=anlass, schimmel=schimmel)
             targets = dienste if dienste is not None else self.opts.bericht_notify
             if push and targets:
                 for svc in targets:
@@ -311,6 +330,10 @@ async def api_info(request: web.Request) -> web.Response:
         with contextlib.suppress(HAError):
             await ks.client.schedule_list()
     nxt = ks.scheduler.next.isoformat(timespec="minutes") if ks.scheduler and ks.scheduler.next else None
+    geladen = await ks.pm_erkennung.geladen()
+    extra: dict[str, Any] = {}
+    if ks.adapter.betriebsart == "generisch":
+        extra["absenktemperatur"] = ks.opts.absenktemperatur
     return web.json_response(
         {
             "version": __version__,
@@ -324,6 +347,11 @@ async def api_info(request: web.Request) -> web.Response:
                 "naechster": nxt,
             },
             "coach": {"ki_entitaet": ks.opts.coach_ki_entitaet, "anwesenheit": ks.opts.coach_anwesenheit},
+            "betriebsart": ks.adapter.betriebsart,
+            "pm_klima_geladen": geladen,
+            "faehigkeiten": ks.adapter.faehigkeiten(),
+            "hinweis_betriebsart": hinweis_betriebsart(ks.adapter.betriebsart, geladen),
+            **extra,
         }
     )
 
@@ -339,6 +367,18 @@ async def api_current(request: web.Request) -> web.Response:
         rooms,
         {"empfehlung": ks.opts.empfehlung, "aussentemperatur": ks.opts.aussentemperatur, "aussenfeuchte": ks.opts.aussenfeuchte},
     )
+    if ks.adapter.betriebsart == "generisch":
+        # nur generisch: App-Modus (plan | hand | aus), Plan-Soll und Status (Timer, Sommer-Pause) je Raum
+        by_id = {s["entity_id"]: s for s in await ks.client.get_states() if "entity_id" in s}
+        await ks.adapter.vorbereiten(rooms, by_id)
+        for room in rooms:
+            z = result["raeume"].get(room.raum)
+            if z is not None:
+                zustand = ks.adapter.raum_zustand(room, by_id)
+                z["app_modus"] = zustand["modus"]
+                z["plan_soll"] = zustand["plan_soll"]
+                z["app_status"], z["status_bis"] = app_status(zustand)
+        result["sommerpause"] = ks.adapter.pause
     return web.json_response(result)
 
 
@@ -443,6 +483,7 @@ async def api_schedule_save(request: web.Request) -> web.Response:
     result = await ks.client.schedule_update(msg)
     _LOGGER.info("Heizplan %s gespeichert", item["id"])
     ks._overview.clear()
+    ks.adapter.plan_geaendert()
     return web.json_response(
         {"ok": True, "tage": sch.ha_to_ui(result), "revision": sch.revision(result), "name": result.get("name")}
     )
@@ -483,6 +524,7 @@ async def api_steuerung(request: web.Request) -> web.Response:
     states = await ks.client.get_states()
     by_id = {s["entity_id"]: s for s in states if "entity_id" in s}
     rooms = await ks.rooms()
+    await ks.adapter.vorbereiten(rooms, by_id)
     try:
         heizperiode = await ks.heizperiode.status(states)
     except (sqlite3.Error, HAError) as err:  # Raumsteuerung bleibt nutzbar
@@ -490,8 +532,8 @@ async def api_steuerung(request: web.Request) -> web.Response:
         heizperiode = None
     return web.json_response(
         {
-            "raeume": {r.raum: st.raum_zustand(r, by_id, ks.opts) for r in rooms},
-            "integration": st.integration_status(by_id),
+            "raeume": {r.raum: ks.adapter.raum_zustand(r, by_id) for r in rooms},
+            "integration": ks.adapter.integration_status(by_id),
             "heizperiode": heizperiode,
         }
     )
@@ -501,16 +543,9 @@ async def api_steuerung_raum(request: web.Request) -> web.Response:
     ks = _ks(request)
     slug = st.pruefe_raum_slug(request.match_info["raum"])
     room = await ks.room(slug)
-    if not st.steuerbar(room, ks.opts):
-        raise st.json_fehler(web.HTTPConflict, f"{room.name} wird nicht von PM Klima gesteuert.", "nicht_gesteuert")
+    ks.adapter.pruefe_steuerbar(room)
     body = await _json_body(request)
-    by_id = {s["entity_id"]: s for s in await ks.client.get_states() if "entity_id" in s}
-    cl = by_id.get(room.climate or "")
-    if cl is None or cl.get("state") in (None, "unavailable", "unknown"):
-        raise st.json_fehler(web.HTTPConflict, f"{room.climate} ist derzeit nicht verfügbar.", "nicht_verfuegbar")
-    befehl = st.pruefe_befehl(body, cl.get("attributes") or {})
-    st.pruefe_modus(befehl, cl.get("state"))
-    await ks.client.call_service(befehl["domain"], befehl["service"], {"entity_id": room.climate, **befehl["daten"]})
+    befehl = await ks.adapter.aktion(room, body)
     _LOGGER.info("Steuerung %s: %s", room.raum, befehl["text"])
     await ks.store.ereignis(
         "steuerung",
@@ -520,7 +555,7 @@ async def api_steuerung_raum(request: web.Request) -> web.Response:
     )
     ks.coach.invalidieren()
     by_id = {s["entity_id"]: s for s in await ks.client.get_states() if "entity_id" in s}
-    return web.json_response({"ok": True, "raum": st.raum_zustand(room, by_id, ks.opts)})
+    return web.json_response({"ok": True, "raum": ks.adapter.raum_zustand(room, by_id)})
 
 
 async def api_heizperiode_get(request: web.Request) -> web.Response:

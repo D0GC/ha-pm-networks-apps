@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 from dataclasses import asdict, dataclass, field
@@ -39,6 +40,11 @@ ENTITY_OPTION_DOMAINS: dict[str, tuple[str, ...]] = {
     "wetter_entitaet": ("weather.",),
 }
 
+# Betriebsart: pm_networks = Integration PM Klima steuert, generisch = Standard-climate-Entitäten
+BETRIEBSARTEN = ("pm_networks", "generisch")
+SOMMER_AKTIONEN = ("plan_pausieren_und_aus", "plan_pausieren")
+ABSENK_GRENZEN = (5.0, 25.0)
+
 
 @dataclass
 class Options:
@@ -56,6 +62,11 @@ class Options:
     coach_ki_entitaet: str = "ai_task.claude_ai_task"
     coach_anwesenheit: bool = True
     wetter_entitaet: str = "weather.dwd_zuhause"
+    betriebsart: str = "pm_networks"
+    # Nur im Modus generisch wirksam (ab Phase „Steuern generisch“)
+    plan_anwenden: bool = True
+    sommer_aktion: str = "plan_pausieren_und_aus"
+    absenktemperatur: float = 17.0
 
     @classmethod
     def load(cls, path: Path | None = None) -> Options:
@@ -101,6 +112,32 @@ class Options:
             opts.coach_anwesenheit = anw
         elif anw is not None:
             _LOGGER.warning("Option coach_anwesenheit: %r ist kein Wahrheitswert, verwende true", anw)
+        for key, erlaubt in (("betriebsart", BETRIEBSARTEN), ("sommer_aktion", SOMMER_AKTIONEN)):
+            val = raw.get(key)
+            if val is None or (isinstance(val, str) and not val.strip()):
+                continue
+            val = val.strip().lower() if isinstance(val, str) else val
+            if val in erlaubt:
+                setattr(opts, key, val)
+            else:
+                _LOGGER.warning("Option %s: %r ist nicht zulässig, verwende %s", key, val, getattr(opts, key))
+        plan = raw.get("plan_anwenden")
+        if isinstance(plan, bool):
+            opts.plan_anwenden = plan
+        elif plan is not None:
+            _LOGGER.warning("Option plan_anwenden: %r ist kein Wahrheitswert, verwende true", plan)
+        absenk = raw.get("absenktemperatur")
+        if absenk is not None:
+            wert = _absenk(absenk)
+            if wert is None:
+                _LOGGER.warning(
+                    "Option absenktemperatur: %r ist nicht zulässig (%g bis %g °C in 0,5er-Schritten), verwende %s",
+                    absenk,
+                    *ABSENK_GRENZEN,
+                    opts.absenktemperatur,
+                )
+            else:
+                opts.absenktemperatur = wert
         lvl = str(raw.get("log_level", "info")).lower()
         opts.log_level = lvl if lvl in ("debug", "info", "warning", "error") else "info"
         return opts
@@ -113,6 +150,15 @@ class Options:
     def bericht_hm(self) -> tuple[int, int]:
         hour, minute = self.bericht_uhrzeit.split(":")
         return int(hour), int(minute)
+
+
+def _absenk(value: Any) -> float | None:
+    """Absenktemperatur: Zahl im zulässigen Bereich, Vielfaches von 0,5 °C."""
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+        return None
+    if not ABSENK_GRENZEN[0] <= value <= ABSENK_GRENZEN[1] or abs(value * 2 - round(value * 2)) > 1e-9:
+        return None
+    return round(float(value) * 2) / 2
 
 
 def normalize_notify(value: str) -> str:
@@ -135,9 +181,21 @@ class Room:
     lueften: str | None = None
     fenster: str | None = None
     co2: str | None = None
+    # Raumtemperatursensor (nur Betriebsart generisch, Bereichszuordnung); fehlt in to_dict, wenn leer
+    temperatur: str | None = None
+    # Absenktemperatur des Raums (Override ``absenk``, nur Betriebsart generisch); fehlt in to_dict, wenn leer
+    absenk: float | None = None
+    # Weitere Thermostate im Bereich (nur Betriebsart generisch, nur angezeigt); fehlt in to_dict, wenn leer
+    climate_weitere: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        for key in ("temperatur", "absenk"):
+            if d[key] is None:
+                del d[key]
+        if not d["climate_weitere"]:
+            del d["climate_weitere"]
+        return d
 
     def entities(self) -> list[str]:
         return [
@@ -151,6 +209,7 @@ class Room:
                 self.lueften,
                 self.fenster,
                 self.co2,
+                self.temperatur,
             )
             if e
         ]
@@ -223,7 +282,11 @@ def discover_rooms(states: list[dict[str, Any]], opts: Options) -> list[Room]:
                 room.co2 = _pick_by_value(co2_sensors, by_id, ref, require_match=True)
         rooms[slug] = room
 
-    # Overrides aus den Optionen
+    return overrides_anwenden(rooms, opts)
+
+
+def overrides_anwenden(rooms: dict[str, Room], opts: Options) -> list[Room]:
+    """Overrides aus den Optionen (``raeume_override``) anwenden und nach Optionen-Reihenfolge sortieren."""
     for ov in opts.raeume:
         slug = str(ov.get("raum", "")).strip().lower()
         if not slug:
@@ -240,6 +303,14 @@ def discover_rooms(states: list[dict[str, Any]], opts: Options) -> list[Room]:
                     _LOGGER.warning("Raum %s: %s ist für %s nicht zulässig", slug, val, key)
                     continue
                 setattr(room, key, val)
+        if ov.get("absenk") is not None:
+            wert = _absenk(ov["absenk"])
+            if wert is None:
+                _LOGGER.warning(
+                    "Raum %s: absenk %r ist nicht zulässig (%g bis %g °C in 0,5er-Schritten)", slug, ov["absenk"], *ABSENK_GRENZEN
+                )
+            else:
+                room.absenk = wert
         rooms[slug] = room
 
     order = {r["raum"]: i for i, r in enumerate(opts.raeume)}

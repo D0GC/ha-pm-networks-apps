@@ -270,6 +270,54 @@ class HAClient:
     async def entity_registry_get(self, entity_id: str) -> dict[str, Any]:
         return await self.ws_command({"type": "config/entity_registry/get", "entity_id": entity_id})
 
+    async def config_entries_get(self, domain: str | None = None) -> list[dict[str, Any]]:
+        """``config_entries/get`` (config/config_entries.py); Einträge mit ``domain`` und ``state``."""
+        payload: dict[str, Any] = {"type": "config_entries/get"}
+        if domain:
+            payload["domain"] = domain
+        result = await self.ws_command(payload)
+        return result if isinstance(result, list) else []
+
+    async def get_services(self) -> dict[str, Any]:
+        """``get_services`` (websocket_api/commands.py): ``{domain: {service: beschreibung}}``."""
+        result = await self.ws_command({"type": "get_services"})
+        return result if isinstance(result, dict) else {}
+
+    async def area_registry_list(self) -> list[dict[str, Any]]:
+        """``config/area_registry/list``: Bereiche mit ``area_id`` und ``name``."""
+        result = await self.ws_command({"type": "config/area_registry/list"})
+        return result if isinstance(result, list) else []
+
+    async def entity_registry_list(self) -> list[dict[str, Any]]:
+        """``config/entity_registry/list``: vollständige Einträge (``entity_id``, ``area_id``, ``device_id`` …)."""
+        result = await self.ws_command({"type": "config/entity_registry/list"})
+        return result if isinstance(result, list) else []
+
+    async def entity_registry_list_for_display(self) -> list[dict[str, Any]]:
+        """``config/entity_registry/list_for_display`` (kompaktes Format), umgesetzt in die Felder von
+        ``config/entity_registry/list``: ``entity_id``, ``platform``, ``area_id``, ``device_id``, ``hidden``."""
+        result = await self.ws_command({"type": "config/entity_registry/list_for_display"})
+        eintraege = (result or {}).get("entities") if isinstance(result, dict) else None
+        out: list[dict[str, Any]] = []
+        for e in eintraege or []:
+            if not isinstance(e, dict) or not e.get("ei"):
+                continue
+            out.append(
+                {
+                    "entity_id": e["ei"],
+                    "platform": e.get("pl"),
+                    "area_id": e.get("ai"),
+                    "device_id": e.get("di"),
+                    "hidden": bool(e.get("hb")),
+                }
+            )
+        return out
+
+    async def device_registry_list(self) -> list[dict[str, Any]]:
+        """``config/device_registry/list``: Geräte mit ``id`` und ``area_id``."""
+        result = await self.ws_command({"type": "config/device_registry/list"})
+        return result if isinstance(result, list) else []
+
     async def history_during_period(
         self,
         entity_ids: list[str],
