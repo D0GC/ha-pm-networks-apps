@@ -680,3 +680,19 @@ async def test_store_app_raum(tmp_path):
         assert (z["modus"], z["hvac_vor_aus"], z["geschrieben"], z["sommer_aus_offen"]) == ("aus", "heat", None, False)
     finally:
         st.close()
+
+
+async def test_heizperiode_sommer_fest_dann_automatik_generisch(app_client_generisch, studio_generisch, fake_generisch, uhr):
+    # Übergangsbereich (jüngstes Tagesmittel 13,7 °C unter 14,0 °C), keine frühere Automatik-Entscheidung
+    heute = datetime.now(TZ).date()
+    werte = {heute - timedelta(days=7 - i): v for i, v in enumerate([11.3, 11.2, 10, 11.8, 10.5, 11.5, 13.7])}
+    fake_generisch.statistik["sensor.aussentemperatur"] = lambda ts: werte.get(datetime.fromtimestamp(ts, TZ).date())
+    studio_generisch.heizperiode._mittel = None
+    resp = await app_client_generisch.post("/api/heizperiode", json={"modus": "sommer"})
+    assert (await resp.json())["aktiv"] is False
+    resp = await app_client_generisch.post("/api/heizperiode", json={"modus": "automatik"})
+    d = await resp.json()
+    assert resp.status == 200, d
+    assert d["aktiv"] is True
+    assert d["entscheidung"]["grund"] == "Übergangsbereich: letzte Entscheidung der Automatik (Heizperiode) bleibt."
+    assert fake_generisch.generisch[KU]["state"] == "heat"

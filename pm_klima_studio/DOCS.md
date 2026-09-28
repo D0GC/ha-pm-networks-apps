@@ -380,7 +380,11 @@ Kalendertage, aus der Langzeitstatistik, ersatzweise aus der Historie. Ein Tag z
 - Die Heizperiode beginnt, wenn das Tagesmittel an den letzten **2 Tagen** unter der **Heizgrenze von 13 °C** liegt.
 - Sie endet, wenn das Tagesmittel an den letzten **3 Tagen** mindestens Heizgrenze plus **Hysterese von 2 K**
   erreicht, also 15 °C.
-- Dazwischen bleibt der bisherige Zustand. Fehlen Tagesmittel, ändert Klima Studio nichts und nennt den Grund.
+- Dazwischen (Übergangsbereich) bleibt die letzte Entscheidung der Automatik, wenn sie höchstens 14 Tage alt ist.
+  Feste Modi und der aktuelle Zustand der Freigabe zählen dafür nicht. Gibt es keine solche Entscheidung, gilt:
+  jüngstes Tagesmittel unter Heizgrenze plus halber Hysterese (14 °C) = Heizperiode, sonst Sommer.
+- Fehlen Tagesmittel, ändert Klima Studio nichts und nennt den Grund. Nur beim Wechsel auf Automatik wird trotzdem
+  entschieden: letzte Entscheidung der Automatik, sonst im Zweifel Heizperiode.
 
 Heizgrenze (5 bis 20 °C), Hysterese (0 bis 5 K) und die Tage bis Beginn und Ende (je 1 bis 7) stellen Sie unter
 **Einstellungen der Automatik** ein. Die Karte zeigt die Tagesmittel als Balken, die Entscheidung mit Begründung und

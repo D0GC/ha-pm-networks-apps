@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 – 2026-09-28
+
+- Behoben: Nach dem Zurückschalten von einem festen Modus (Sommer oder Heizperiode) auf Automatik hielt die Automatik im Übergangsbereich den Zustand des festen Modus fest; die Freigabe blieb z. B. nach „Sommer → Automatik“ trotz kühler Tage aus. Die letzte Entscheidung der Automatik wird jetzt getrennt gespeichert und von festen Modi nicht verändert. Im Übergangsbereich gilt sie, wenn sie höchstens 14 Tage alt ist; sonst entscheidet das jüngste abgeschlossene Tagesmittel (unter Heizgrenze plus halbe Hysterese = Heizperiode, sonst Sommer), ohne Daten gilt Heizperiode. Der aktuelle Zustand der Freigabe und feste Modi zählen im Übergangsbereich nicht mehr. Beim Wechsel auf Automatik wird das Ergebnis sofort angewendet. Gilt für beide Betriebsarten.
+- Statustexte im Übergangsbereich nennen die Grundlage, z. B. „Übergangsbereich: letzte Entscheidung der Automatik (Heizperiode) bleibt.“
+- Geprüft: Das laufende, unvollständige Tagesmittel des heutigen Tages zählte bereits bisher nicht mit (nur abgeschlossene Kalendertage in lokaler Zeit); dazu ein Test.
+- Hinweis zum Update: Aus 1.2.0 gibt es noch keine gespeicherte Entscheidung der Automatik. Liegen die Tagesmittel im Übergangsbereich, gilt bei der ersten Prüfung deshalb einmalig die Regel mit dem jüngsten Tagesmittel.
+
 ## 1.2.0 – 2026-09-27
 
 - Neue Option `betriebsart`: `pm_networks` (Standard) mit der Integration PM Klima, `generisch` für beliebige Thermostate ohne PM Klima. Im Modus `pm_networks` bleibt das Verhalten von 1.1.1 unverändert. Klima Studio erkennt, ob PM Klima geladen ist, und zeigt einen Hinweis, wenn die Betriebsart nicht passt; umgeschaltet wird nie automatisch.

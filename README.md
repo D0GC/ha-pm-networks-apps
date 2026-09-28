@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="pm_klima_studio/CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.2.0-784295?style=flat-square" alt="Version 1.2.0"></a>
+  <a href="pm_klima_studio/CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.2.1-784295?style=flat-square" alt="Version 1.2.1"></a>
   <img src="https://img.shields.io/badge/Home%20Assistant-%E2%89%A5%202026.9-443171?style=flat-square&logo=homeassistant&logoColor=white" alt="Home Assistant ab 2026.9">
   <img src="https://img.shields.io/badge/Architektur-aarch64%20%7C%20amd64-262252?style=flat-square" alt="Architekturen aarch64 und amd64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-MIT-191537?style=flat-square" alt="Lizenz MIT"></a>

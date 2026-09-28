@@ -19,6 +19,9 @@ Schutz vor versehentlicher Sperre im Winter:
   eingeschaltet (Winterschutz).
 * Ein Schreibbefehl gilt erst als erledigt, wenn der Zustand danach stimmt.
 * Die gespeicherte Entscheidung gilt nur für die Entität, zu der sie gehört.
+* Die letzte Entscheidung der Automatik (``automatik_entscheidung``, ``automatik_zeit``) wird
+  getrennt gespeichert und von festen Modi nicht verändert. Nur sie trägt den Übergangsbereich
+  (höchstens ``AUTOMATIK_GUELTIG_TAGE``), nie ein fester Modus oder der Istzustand der Freigabe.
 """
 
 from __future__ import annotations
@@ -56,6 +59,7 @@ INTERVALL = 3600
 MITTEL_TTL = 900
 BEREIT_WARTEN = 300
 WINTERSCHUTZ_STUNDEN = 6
+AUTOMATIK_GUELTIG_TAGE = 14  # so lange gilt die letzte Entscheidung der Automatik im Übergangsbereich
 HINWEIS_EINRICHTEN = (
     "Die Entität {entitaet} wurde angelegt. Tragen Sie sie einmalig in der Integration PM Klima als Freigabe ein: "
     "Einstellungen → Geräte & Dienste → PM Klima → Konfigurieren → Schritt „Sperre“ → freigabe_entitaet. "
@@ -140,37 +144,56 @@ def eindeutig(tagesmittel: list[float | None], einst: dict[str, Any]) -> bool | 
     return None
 
 
+def _name(aktiv: bool) -> str:
+    return "Heizperiode" if aktiv else "Sommer"
+
+
+def _mitte_regel(tagesmittel: list[float | None], einst: dict[str, Any], vorspann: str) -> tuple[bool, str]:
+    """Jüngstes abgeschlossenes Tagesmittel gegen die Mitte des Übergangsbereichs; ohne Daten Heizperiode."""
+    mitte = float(einst["heizgrenze"]) + float(einst["hysterese"]) / 2
+    juengstes = next((v for v in reversed(tagesmittel) if v is not None), None)
+    if juengstes is None:
+        return True, f"{vorspann}: keine Tagesmittel der Außentemperatur, im Zweifel Heizperiode."
+    if juengstes < mitte:
+        return True, f"{vorspann}: Tagesmittel {_fmt(juengstes)} °C unter {_fmt(mitte)} °C, daher Heizperiode."
+    return False, f"{vorspann}: Tagesmittel {_fmt(juengstes)} °C nicht unter {_fmt(mitte)} °C, daher Sommer."
+
+
 def entscheide(
     tagesmittel: list[float | None],
     einst: dict[str, Any],
-    bisher: bool | None,
-    zustand: bool | None,
+    automatik: bool | None,
+    wechsel: bool = False,
+    automatik_veraltet: bool = False,
 ) -> tuple[bool | None, str]:
-    """Automatik-Entscheidung nach Heizgrenztemperatur (Tagesmittel, älteste zuerst).
+    """Automatik-Entscheidung nach Heizgrenztemperatur (Tagesmittel abgeschlossener Tage, älteste zuerst).
 
-    Rückgabe ``(aktiv, grund)``; ``aktiv`` None = zu wenige Daten, nichts ändern.
+    ``automatik`` ist die letzte, noch gültige Entscheidung der Automatik (nie die eines festen Modus
+    und nie der Istzustand der Freigabe). Im Übergangsbereich bleibt sie; fehlt sie, gilt die
+    Mitte-Regel (jüngstes Tagesmittel unter Heizgrenze + Hysterese/2 = Heizperiode, ohne Daten
+    Heizperiode). ``automatik_veraltet`` nur für den Text (vorhanden, aber älter als 14 Tage).
+
+    Rückgabe ``(aktiv, grund)``; ``aktiv`` None = zu wenige Daten, nichts ändern. Beim Wechsel in die
+    Automatik (``wechsel``) gibt es immer eine Entscheidung, damit ein fester Modus nicht nachwirkt.
     """
     grenze = float(einst["heizgrenze"])
     ende = grenze + float(einst["hysterese"])
     n_start, n_ende = int(einst["tage_start"]), int(einst["tage_ende"])
+    ohne = "letzte Entscheidung der Automatik älter als 14 Tage" if automatik_veraltet else "keine frühere Automatik-Entscheidung"
     if _fenster(tagesmittel, n_start) is None and _fenster(tagesmittel, n_ende) is None:
-        return None, "Zu wenige Daten: Für die letzten Tage fehlen Tagesmittel der Außentemperatur."
+        if not wechsel:
+            return None, "Zu wenige Daten: Für die letzten Tage fehlen Tagesmittel der Außentemperatur."
+        if automatik is not None:
+            return automatik, f"Zu wenige Daten: letzte Entscheidung der Automatik ({_name(automatik)}) bleibt."
+        return _mitte_regel(tagesmittel, einst, f"Zu wenige Daten, {ohne}")
     klar = eindeutig(tagesmittel, einst)
     if klar is True:
         return True, f"Tagesmittel der letzten {n_start} Tage unter der Heizgrenze von {_fmt(grenze)} °C."
     if klar is False:
         return False, f"Tagesmittel der letzten {n_ende} Tage mindestens {_fmt(ende)} °C (Heizgrenze plus Hysterese)."
-    if bisher is not None:
-        return bisher, "Tagesmittel im Übergangsbereich, bisheriger Zustand bleibt."
-    if zustand is not None:
-        return zustand, "Tagesmittel im Übergangsbereich, aktueller Zustand der Freigabe wird übernommen."
-    gestern = next((v for v in reversed(tagesmittel) if v is not None), None)
-    if gestern is None:  # pragma: no cover - durch die Prüfungen oben ausgeschlossen
-        return None, "Zu wenige Daten."
-    mitte = grenze + float(einst["hysterese"]) / 2
-    if gestern < mitte:
-        return True, f"Letztes Tagesmittel unter {_fmt(mitte)} °C, Heizperiode angenommen."
-    return False, f"Letztes Tagesmittel mindestens {_fmt(mitte)} °C, Sommer angenommen."
+    if automatik is not None:
+        return automatik, f"Übergangsbereich: letzte Entscheidung der Automatik ({_name(automatik)}) bleibt."
+    return _mitte_regel(tagesmittel, einst, f"Übergangsbereich, {ohne}")
 
 
 def tagesmittel_aus_stunden(rows: list[dict[str, Any]], tage: list[date], tz: ZoneInfo) -> list[float | None]:
@@ -328,6 +351,29 @@ class Heizperiode:
         bisher = gespeichert.get("entscheidung")
         return bisher if isinstance(bisher, bool) else None
 
+    def _automatik(self, gespeichert: dict[str, Any], entitaet: bool = True) -> tuple[bool | None, bool]:
+        """Letzte Entscheidung der Automatik, falls vorhanden und höchstens 14 Tage alt.
+
+        Rückgabe ``(entscheidung, veraltet)``; ``veraltet`` = vorhanden, aber zu alt (nur für den Text).
+        ``entitaet``: nur verwenden, wenn der Zustand zur aktuellen Freigabe-Entität gehört.
+        """
+        if entitaet and gespeichert.get("entitaet") != self.entitaet:
+            return None, False
+        wert = gespeichert.get("automatik_entscheidung")
+        if not isinstance(wert, bool):
+            return None, False
+        zeit = _zeit(gespeichert.get("automatik_zeit"))
+        if zeit is None or datetime.now(UTC) - zeit > timedelta(days=AUTOMATIK_GUELTIG_TAGE):
+            return None, True
+        return wert, False
+
+    @staticmethod
+    def _automatik_merken(neu: dict[str, Any], einst: dict[str, Any], aktiv: bool | None) -> None:
+        """Entscheidung der Automatik getrennt merken (feste Modi lassen sie unverändert)."""
+        if einst["modus"] == "automatik" and aktiv is not None:
+            neu["automatik_entscheidung"] = aktiv
+            neu["automatik_zeit"] = datetime.now(UTC).isoformat(timespec="seconds")
+
     async def _zustand_lesen(self, eid: str) -> Any:
         states = await self.client.get_states()
         return next((s.get("state") for s in states if s.get("entity_id") == eid), None)
@@ -350,16 +396,19 @@ class Heizperiode:
         await self.store.ereignis("heizperiode", None, text, {"aktiv": an_, "modus": modus, "entitaet": eid, "grund": grund})
         return True
 
-    async def pruefen(self, erzwingen: bool = False, states: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    async def pruefen(
+        self, erzwingen: bool = False, states: list[dict[str, Any]] | None = None, wechsel: bool = False
+    ) -> dict[str, Any]:
         """Auswerten und die Freigabe bei Bedarf schalten.
 
         Feste Modi werden immer durchgesetzt. In der Automatik wird geschrieben, wenn sich die
         Entscheidung ändert, ein früherer Schreibbefehl noch aussteht (``angewendet`` falsch),
         ``erzwingen`` gesetzt ist oder der Winterschutz greift. Eine manuelle Umschaltung in HA
-        wird sonst respektiert und als Abweichung vermerkt.
+        wird sonst respektiert und als Abweichung vermerkt. ``wechsel``: gerade in die Automatik
+        gewechselt, es wird in jedem Fall entschieden (auch ohne Daten, dann im Zweifel Heizperiode).
         """
         if self.adapter.heizperiode_intern:
-            return await self._pruefen_intern(erzwingen, states)
+            return await self._pruefen_intern(erzwingen, states, wechsel)
         async with self._lock:
             einst = await self.einstellungen()
             by_id = {s["entity_id"]: s for s in states or await self.client.get_states()}
@@ -367,7 +416,7 @@ class Heizperiode:
             ist = _an_aus(st.get("state")) if st else None
             gespeichert = await self._zustand_gespeichert()
             bisher = self._bisher(gespeichert)
-            aktiv, grund = await self._entscheidung(einst, bisher, ist)
+            aktiv, grund = await self._entscheidung(einst, *self._automatik(gespeichert), wechsel)
             if aktiv is None or st is None:
                 if st is None:
                     grund = f"{grund} Die Freigabe-Entität {self.entitaet} fehlt."
@@ -380,6 +429,7 @@ class Heizperiode:
             if aktiv != bisher or erzwingen:
                 neu["angewendet"] = False
             neu["entscheidung"] = aktiv
+            self._automatik_merken(neu, einst, aktiv)
             try:
                 grund = await self._abgleichen(neu, einst, aktiv, ist, grund)
             finally:
@@ -417,13 +467,16 @@ class Heizperiode:
             neu["letzte_aenderung"] = jetzt_iso()
         return grund
 
-    async def _entscheidung(self, einst: dict[str, Any], bisher: bool | None, ist: bool | None) -> tuple[bool | None, str]:
+    async def _entscheidung(
+        self, einst: dict[str, Any], automatik: bool | None, veraltet: bool = False, wechsel: bool = False
+    ) -> tuple[bool | None, str]:
+        """Fester Modus oder Automatik; ``automatik`` = letzte gültige Entscheidung der Automatik."""
         if einst["modus"] == "heizperiode":
             return True, "Manuell auf Heizperiode gestellt."
         if einst["modus"] == "sommer":
             return False, "Manuell auf Sommer gestellt."
         _, werte = await self.tagesmittel()
-        return entscheide(werte, einst, bisher, ist)
+        return entscheide(werte, einst, automatik, wechsel=wechsel, automatik_veraltet=veraltet)
 
     # ------------------------------------------------------------- API
 
@@ -437,9 +490,8 @@ class Heizperiode:
         zustand = roh if roh in ("on", "off") else None
         aktiv = _an_aus(zustand)
         gespeichert = await self._zustand_gespeichert()
-        bisher = self._bisher(gespeichert)
         tage, werte = await self.tagesmittel()
-        e_aktiv, grund = await self._entscheidung(einst, bisher, aktiv)
+        e_aktiv, grund = await self._entscheidung(einst, *self._automatik(gespeichert))
         if st is None:
             grund = f"{grund} Die Freigabe-Entität {self.entitaet} fehlt."
         verknuepft = self.adapter.freigabe_verknuepft(by_id, zustand)
@@ -502,7 +554,7 @@ class Heizperiode:
         if neu != alt:
             await self.store.ereignis("heizperiode", None, "Einstellungen der Heizperiode geändert", neu)
         try:
-            await self.pruefen(erzwingen=modus_neu)
+            await self.pruefen(erzwingen=modus_neu, wechsel=modus_neu and neu["modus"] == "automatik")
         except HAError as err:
             raise HAError(
                 f"Einstellungen gespeichert, die Freigabe konnte aber nicht geschaltet werden ({err}). "
@@ -514,11 +566,11 @@ class Heizperiode:
     async def _entscheidung_einrichten(self, einst: dict[str, Any]) -> tuple[bool, str]:
         """Startzustand einer neu angelegten Freigabe: aus nur bei eindeutigem Ende der Heizperiode."""
         if einst["modus"] != "automatik":
-            aktiv, grund = await self._entscheidung(einst, None, None)
+            aktiv, grund = await self._entscheidung(einst, None)
             return bool(aktiv), grund
         _, werte = await self.tagesmittel()
         klar = eindeutig(werte, einst)
-        aktiv, grund = entscheide(werte, einst, None, None)
+        aktiv, grund = entscheide(werte, einst, None)
         if klar is False:
             return False, grund
         if klar is True:
@@ -547,6 +599,7 @@ class Heizperiode:
         async with self._lock:
             gespeichert = await self._zustand_gespeichert()
             zustand: dict[str, Any] = {"entitaet": neu, "entscheidung": aktiv, "angewendet": False}
+            self._automatik_merken(zustand, einst, aktiv)
             if gespeichert.get("letzte_aenderung"):
                 zustand["letzte_aenderung"] = gespeichert["letzte_aenderung"]
             try:
@@ -565,7 +618,9 @@ class Heizperiode:
         raw = await self.store.einstellung(ZUSTAND_INTERN)
         return raw if isinstance(raw, dict) else {}
 
-    async def _pruefen_intern(self, erzwingen: bool, states: list[dict[str, Any]] | None) -> dict[str, Any]:
+    async def _pruefen_intern(
+        self, erzwingen: bool, states: list[dict[str, Any]] | None, wechsel: bool = False
+    ) -> dict[str, Any]:
         """Automatik wie mit Freigabe-Entität; geschaltet wird der interne Zustand über den Adapter.
 
         Geschrieben wird bei geänderter Entscheidung, bei ausstehendem Anwenden oder mit ``erzwingen``.
@@ -577,7 +632,7 @@ class Heizperiode:
             gespeichert = await self._intern_gespeichert()
             ist = self.adapter.heizperiode_ist()
             bisher = gespeichert.get("entscheidung") if isinstance(gespeichert.get("entscheidung"), bool) else None
-            aktiv, grund = await self._entscheidung(einst, bisher, ist)
+            aktiv, grund = await self._entscheidung(einst, *self._automatik(gespeichert, entitaet=False), wechsel)
             if aktiv is None:
                 return {"aktiv": aktiv, "grund": grund}
             neu = dict(gespeichert)
@@ -586,6 +641,7 @@ class Heizperiode:
             # Allererste Entscheidung der Automatik: nur den Zustand merken, keine Thermostate umstellen
             erstentscheid = not gespeichert and einst["modus"] == "automatik"
             neu["entscheidung"] = aktiv
+            self._automatik_merken(neu, einst, aktiv)
             try:
                 if ist is not aktiv or not neu.get("angewendet"):
                     neu["angewendet"] = False
@@ -616,9 +672,8 @@ class Heizperiode:
         spiegel = st.get("state") if st else None
         aktiv = self.adapter.heizperiode_ist()
         gespeichert = await self._intern_gespeichert()
-        bisher = gespeichert.get("entscheidung") if isinstance(gespeichert.get("entscheidung"), bool) else None
         tage, werte = await self.tagesmittel()
-        e_aktiv, grund = await self._entscheidung(einst, bisher, aktiv)
+        e_aktiv, grund = await self._entscheidung(einst, *self._automatik(gespeichert, entitaet=False))
         abweichung: dict[str, Any] | None = None
         if e_aktiv is not None and aktiv is not e_aktiv:
             abweichung = {

@@ -9,7 +9,7 @@ import pytest
 
 from fake_ha import TZ
 from klimastudio import heizperiode as hpm
-from klimastudio.heizperiode import STANDARD, entscheide, tagesmittel_aus_stunden
+from klimastudio.heizperiode import STANDARD, eindeutig, entscheide, tagesmittel_aus_stunden
 
 HP = "input_boolean.pm_heizperiode"
 
@@ -22,41 +22,63 @@ def einst(**kw):
 
 
 def test_start_when_last_days_below_limit():
-    aktiv, grund = entscheide([16, 16, 16, 16, 16, 12, 12.9], einst(), bisher=False, zustand=False)
+    aktiv, grund = entscheide([16, 16, 16, 16, 16, 12, 12.9], einst(), False)
     assert aktiv is True
     assert "unter der Heizgrenze" in grund
     # Nur ein Tag kalt reicht nicht (tage_start=2)
-    assert entscheide([16, 16, 16, 16, 16, 16, 10], einst(), bisher=False, zustand=None)[0] is False
+    assert entscheide([16, 16, 16, 16, 16, 16, 10], einst(), False)[0] is False
 
 
 def test_end_requires_limit_plus_hysteresis():
-    aktiv, grund = entscheide([10, 10, 10, 10, 15, 15, 15.2], einst(), bisher=True, zustand=True)
+    aktiv, grund = entscheide([10, 10, 10, 10, 15, 15, 15.2], einst(), True)
     assert aktiv is False
     assert "Hysterese" in grund
-    # 14,9 liegt unter 13 + 2 -> Übergangsbereich, bisheriger Zustand bleibt
-    assert entscheide([10, 10, 10, 10, 15, 15, 14.9], einst(), bisher=True, zustand=False)[0] is True
-    assert entscheide([10, 10, 10, 10, 15, 15, 14.9], einst(), bisher=False, zustand=True)[0] is False
-
-
-def test_hysteresis_zone_without_history():
-    zone = [14, 14, 14, 14, 14, 14, 14]
-    aktiv, grund = entscheide(zone, einst(), bisher=None, zustand=True)
+    # 14,9 liegt unter 13 + 2 -> Übergangsbereich, letzte Entscheidung der Automatik bleibt
+    aktiv, grund = entscheide([10, 10, 10, 10, 15, 15, 14.9], einst(), True)
     assert aktiv is True
-    assert "aktueller Zustand" in grund
-    assert entscheide(zone, einst(), bisher=None, zustand=False)[0] is False
-    # Weder Entscheidung noch Zustand: letztes Tagesmittel < 13 + 2/2 -> Heizperiode
-    assert entscheide([*zone[:-1], 13.9], einst(), bisher=None, zustand=None)[0] is True
-    assert entscheide([*zone[:-1], 14.0], einst(), bisher=None, zustand=None)[0] is False
+    assert grund == "Übergangsbereich: letzte Entscheidung der Automatik (Heizperiode) bleibt."
+    assert entscheide([10, 10, 10, 10, 15, 15, 14.9], einst(), False)[0] is False
+
+
+def test_hysteresis_zone_without_automatic_decision():
+    # Ohne frühere Automatik-Entscheidung: jüngstes Tagesmittel < 13 + 2/2 -> Heizperiode
+    zone = [14, 14, 14, 14, 14, 14, 14]
+    aktiv, grund = entscheide([*zone[:-1], 13.7], einst(), None)
+    assert aktiv is True
+    assert grund == (
+        "Übergangsbereich, keine frühere Automatik-Entscheidung: Tagesmittel 13,7 °C unter 14,0 °C, daher Heizperiode."
+    )
+    aktiv, grund = entscheide(zone, einst(), None)
+    assert aktiv is False
+    assert "nicht unter 14,0 °C, daher Sommer" in grund
+    assert "älter als 14 Tage" in entscheide(zone, einst(), None, automatik_veraltet=True)[1]
 
 
 def test_too_little_data():
-    aktiv, grund = entscheide([None] * 7, einst(), bisher=True, zustand=True)
+    aktiv, grund = entscheide([None] * 7, einst(), True)
     assert aktiv is None
     assert "Zu wenige Daten" in grund
-    assert entscheide([10, 10, 10, 10, 10, None, 10], einst(tage_start=2, tage_ende=3), None, None)[0] is None
-    assert entscheide([], einst(), None, None)[0] is None
+    assert entscheide([10, 10, 10, 10, 10, None, 10], einst(tage_start=2, tage_ende=3), None)[0] is None
+    assert entscheide([], einst(), None)[0] is None
     # Start-Fenster vollständig, Ende-Fenster nicht: Start zählt
-    assert entscheide([None, None, None, None, None, 5, 5], einst(tage_ende=3), None, None)[0] is True
+    assert entscheide([None, None, None, None, None, 5, 5], einst(tage_ende=3), None)[0] is True
+
+
+def test_too_little_data_on_switch_to_automatic():
+    # Wechsel in die Automatik: immer eine Entscheidung, ohne Daten im Zweifel Heizperiode
+    aktiv, grund = entscheide([None] * 7, einst(), None, wechsel=True)
+    assert aktiv is True
+    assert "im Zweifel Heizperiode" in grund
+    assert entscheide([None] * 7, einst(), False, wechsel=True)[0] is False
+    assert entscheide([20, 20, 20, 20, 20, None, 20], einst(), None, wechsel=True)[0] is False
+
+
+def test_reported_transition_values():
+    # Beobachtet: Tagesmittel 11,3 … 13,7 °C bei Heizgrenze 13, Hysterese 2, 2/3 Tagen
+    werte = [11.3, 11.2, 10, 11.8, 10.5, 11.5, 13.7]
+    assert eindeutig(werte, einst()) is None
+    assert entscheide(werte, einst(), None)[0] is True
+    assert entscheide(werte, einst(), None, wechsel=True)[0] is True
 
 
 def test_daily_mean_from_hourly_statistics():
@@ -386,11 +408,18 @@ async def test_decision_bound_to_entity(studio, fake):
     helfer(fake, "on")
     # Gespeicherte Entscheidung einer anderen Entität wird verworfen
     await studio.store.einstellung_setzen(
-        "heizperiode_zustand", {"entitaet": "input_boolean.alt", "entscheidung": False, "angewendet": True}
+        "heizperiode_zustand",
+        {
+            "entitaet": "input_boolean.alt",
+            "entscheidung": False,
+            "angewendet": True,
+            "automatik_entscheidung": False,
+            "automatik_zeit": datetime.now(TZ).isoformat(timespec="seconds"),
+        },
     )
-    setze_tagesmittel(fake, studio, [14] * 7)  # Übergangsbereich
+    setze_tagesmittel(fake, studio, [14, 14, 14, 14, 14, 14, 13.5])  # Übergangsbereich
     res = await studio.heizperiode.pruefen()
-    assert res["aktiv"] is True  # aktueller Zustand wird übernommen, nicht die fremde Entscheidung
+    assert res["aktiv"] is True  # Mitte-Regel, nicht die fremde Entscheidung
     assert schaltungen(fake) == []
     z = await studio.store.einstellung("heizperiode_zustand")
     assert (z["entitaet"], z["entscheidung"], z["angewendet"]) == (HP, True, True)
@@ -433,7 +462,17 @@ async def test_einrichten_transition_zone_sets_on(app_client, fake, studio):
     assert d["zustand"] == "on"
     assert "Auto sofort ab" in d["hinweis"]
     z = await studio.store.einstellung("heizperiode_zustand")
-    assert z == {"entitaet": HP, "entscheidung": True, "angewendet": True, "letzte_aenderung": z["letzte_aenderung"]}
+    assert z == {
+        "entitaet": HP,
+        "entscheidung": True,
+        "angewendet": True,
+        "letzte_aenderung": z["letzte_aenderung"],
+        "automatik_entscheidung": True,
+        "automatik_zeit": z["automatik_zeit"],
+    }
+    # Folgeprüfung im Übergangsbereich: die Startentscheidung der Automatik bleibt (kein Umschalten)
+    assert (await studio.heizperiode.pruefen())["aktiv"] is True
+    assert fake.extra[HP][0] == "on"
 
 
 async def test_einrichten_without_data_sets_on(app_client, fake, studio):
@@ -441,3 +480,108 @@ async def test_einrichten_without_data_sets_on(app_client, fake, studio):
     fake.sim.series.pop("sensor.aussentemperatur")
     d = await (await app_client.post("/api/heizperiode/einrichten", json={})).json()
     assert d["zustand"] == "on"
+
+
+# ------------------------------------------------------------------ Automatik nach festen Modi (1.2.1)
+
+BEOBACHTET = [11.3, 11.2, 10, 11.8, 10.5, 11.5, 13.7]  # Übergangsbereich, jüngstes Mittel unter 14,0 °C
+
+
+async def modus(app_client, wert):
+    resp = await app_client.post("/api/heizperiode", json={"modus": wert})
+    d = await resp.json()
+    assert resp.status == 200, d
+    return d
+
+
+async def test_fixed_summer_does_not_hold_automatic_in_transition(app_client, fake, studio):
+    # Beobachtet: Sommer -> Heizperiode -> Sommer -> Automatik, Freigabe blieb aus
+    helfer(fake, "on")
+    setze_tagesmittel(fake, studio, BEOBACHTET)
+    await modus(app_client, "sommer")
+    await modus(app_client, "heizperiode")
+    d = await modus(app_client, "sommer")
+    assert d["zustand"] == "off"
+    d = await modus(app_client, "automatik")
+    assert d["zustand"] == "on"
+    assert schaltungen(fake)[-1][1] == "turn_on"
+    assert d["entscheidung"] == {
+        "aktiv": True,
+        "grund": "Übergangsbereich: letzte Entscheidung der Automatik (Heizperiode) bleibt.",
+    }
+    ev = await studio.store.ereignisse("heizperiode")
+    assert ev[0]["daten"]["grund"] == (
+        "Übergangsbereich, keine frühere Automatik-Entscheidung: Tagesmittel 13,7 °C unter 14,0 °C, daher Heizperiode."
+    )
+    # Folgeprüfungen bleiben dabei
+    await studio.heizperiode.pruefen()
+    assert fake.extra[HP][0] == "on"
+
+
+async def test_fixed_heating_to_automatic_with_clear_end_switches_off(app_client, fake, studio):
+    helfer(fake, "off")
+    setze_tagesmittel(fake, studio, [8] * 7)
+    await studio.heizperiode.pruefen()  # Automatik: Heizperiode
+    d = await modus(app_client, "heizperiode")
+    assert d["zustand"] == "on"
+    setze_tagesmittel(fake, studio, [16] * 7)  # eindeutiges Ende
+    d = await modus(app_client, "automatik")
+    assert d["zustand"] == "off"
+    assert d["entscheidung"]["aktiv"] is False
+    assert "Hysterese" in d["entscheidung"]["grund"]
+
+
+async def test_automatic_decision_survives_fixed_modes(app_client, fake, studio):
+    helfer(fake, "on")
+    setze_tagesmittel(fake, studio, [18] * 7)
+    await studio.heizperiode.pruefen()  # Automatik: Sommer
+    assert fake.extra[HP][0] == "off"
+    await modus(app_client, "heizperiode")
+    await modus(app_client, "sommer")
+    d = await modus(app_client, "heizperiode")
+    assert d["zustand"] == "on"
+    z = await studio.store.einstellung("heizperiode_zustand")
+    assert (z["entscheidung"], z["automatik_entscheidung"]) == (True, False)
+    # Übergangsbereich (Mitte-Regel ergäbe Heizperiode): die Automatik-Entscheidung Sommer zählt
+    setze_tagesmittel(fake, studio, BEOBACHTET)
+    d = await modus(app_client, "automatik")
+    assert d["zustand"] == "off"
+    assert d["entscheidung"]["grund"] == "Übergangsbereich: letzte Entscheidung der Automatik (Sommer) bleibt."
+
+
+async def test_automatic_decision_older_than_14_days_uses_middle_rule(app_client, fake, studio):
+    helfer(fake, "on")
+    setze_tagesmittel(fake, studio, [18] * 7)
+    await studio.heizperiode.pruefen()  # Automatik: Sommer
+    await modus(app_client, "sommer")
+    z = await studio.store.einstellung("heizperiode_zustand")
+    z["automatik_zeit"] = (datetime.now(TZ) - timedelta(days=15)).isoformat(timespec="seconds")
+    await studio.store.einstellung_setzen("heizperiode_zustand", z)
+    setze_tagesmittel(fake, studio, BEOBACHTET)
+    await modus(app_client, "automatik")
+    assert fake.extra[HP][0] == "on"
+    ev = await studio.store.ereignisse("heizperiode")
+    assert ev[0]["daten"]["grund"].startswith("Übergangsbereich, letzte Entscheidung der Automatik älter als 14 Tage:")
+    z = await studio.store.einstellung("heizperiode_zustand")
+    assert z["automatik_entscheidung"] is True
+
+
+async def test_switch_to_automatic_without_data_means_heating(app_client, fake, studio):
+    helfer(fake, "on")
+    fake.statistik_fehlt.add("sensor.aussentemperatur")
+    fake.sim.series.pop("sensor.aussentemperatur")
+    d = await modus(app_client, "sommer")
+    assert d["zustand"] == "off"
+    await modus(app_client, "automatik")
+    assert fake.extra[HP][0] == "on"
+    ev = await studio.store.ereignisse("heizperiode")
+    assert "im Zweifel Heizperiode" in ev[0]["daten"]["grund"]
+
+
+async def test_running_day_is_not_counted(studio, fake):
+    heute = datetime.now(TZ).date()
+    fake.statistik["sensor.aussentemperatur"] = lambda ts: 30.0 if datetime.fromtimestamp(ts, TZ).date() >= heute else 8.0
+    studio.heizperiode._mittel = None
+    tage, werte = await studio.heizperiode.tagesmittel()
+    assert tage[-1] == heute - timedelta(days=1)
+    assert werte == [8.0] * 7

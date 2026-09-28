@@ -2,7 +2,7 @@
 # der Supervisor (ab 2026.04 ohne build.yaml) baut damit für die jeweilige Plattform.
 FROM ghcr.io/home-assistant/base-python:3.13-alpine3.24-2026.08.0
 
-ARG BUILD_VERSION=1.2.0
+ARG BUILD_VERSION=1.2.1
 ARG BUILD_ARCH=amd64
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

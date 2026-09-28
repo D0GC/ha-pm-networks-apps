@@ -23,6 +23,7 @@ from klimastudio.config import Options
 from klimastudio.server import KlimaStudio, create_app
 
 SNAPSHOT = Path(__file__).parent / "daten" / "pm_snapshot_1_1_1.json"
+WISSEN_PRODUKTIV = Path(__file__).parents[1] / "pm_klima_studio" / "app" / "klimastudio" / "coach" / "wissen.json"
 FEST = datetime(2026, 1, 14, 19, 17, 0, tzinfo=UTC)  # Mittwoch, 20:17 Uhr Ortszeit, Heizperiode
 ENDPUNKTE = ("/api/steuerung", "/api/heizperiode", "/api/coach", "/api/coach/lagebericht")
 INFO_SCHLUESSEL = ("version", "ha_version", "zeitzone", "raeume", "bericht", "coach")
@@ -54,13 +55,15 @@ def _versionen_pruefen(soll: dict, ist: dict) -> None:
     """Versionsfelder gegen ``__version__`` prüfen und im Soll angleichen (alle übrigen Felder unverändert).
 
     Betrifft nur ``/api/info`` ``version`` und ``/api/coach`` ``wissen_version`` des produktiven
-    Wissens (dessen Version folgt der App-Version); das Test-Wissen (``test-1``) bleibt fest.
+    Wissens (Version aus ``wissen.json``, ändert sich nur mit dem Wissen, nicht bei jeder App-Version);
+    das Test-Wissen (``test-1``) bleibt fest.
     """
     assert ist["/api/info"]["version"] == __version__
     soll["/api/info"] = {**soll["/api/info"], "version": __version__}
     if soll["/api/coach"]["wissen_version"] != "test-1":
-        assert ist["/api/coach"]["wissen_version"] == __version__
-        soll["/api/coach"] = {**soll["/api/coach"], "wissen_version": __version__}
+        wissen_version = json.loads(WISSEN_PRODUKTIV.read_text(encoding="utf-8"))["version"]
+        assert ist["/api/coach"]["wissen_version"] == wissen_version
+        soll["/api/coach"] = {**soll["/api/coach"], "wissen_version": wissen_version}
 
 
 def _szenario_freigabe(fake: FakeHA) -> None:
