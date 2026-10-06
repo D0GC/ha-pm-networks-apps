@@ -67,6 +67,8 @@ class Options:
     plan_anwenden: bool = True
     sommer_aktion: str = "plan_pausieren_und_aus"
     absenktemperatur: float = 17.0
+    # Zugang für PM Panel Studio (Wandpanel): leer = nur Ingress
+    panel_schluessel: str = ""
 
     @classmethod
     def load(cls, path: Path | None = None) -> Options:
@@ -138,6 +140,12 @@ class Options:
                 )
             else:
                 opts.absenktemperatur = wert
+        schl = raw.get("panel_schluessel")
+        if isinstance(schl, str) and schl.strip():
+            if len(schl.strip()) >= 16:
+                opts.panel_schluessel = schl.strip()
+            else:
+                _LOGGER.warning("Option panel_schluessel: zu kurz (mindestens 16 Zeichen), Panel-Zugang bleibt aus")
         lvl = str(raw.get("log_level", "info")).lower()
         opts.log_level = lvl if lvl in ("debug", "info", "warning", "error") else "info"
         return opts

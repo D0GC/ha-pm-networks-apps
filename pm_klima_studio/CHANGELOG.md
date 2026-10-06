@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2 – 2026-10-07
+
+- Neue Option `panel_schluessel`: Mit demselben Schlüssel in PM Panel Studio (`klima_studio_schluessel`) zeigt das Wandpanel Klima Studio als eigene Seite. Zugelassen sind dann zusätzlich Anfragen aus dem internen App-Netz (172.30.32.0/23) mit diesem Schlüssel in der Kopfzeile `X-PM-Panel-Schluessel`; ohne Option bleibt Klima Studio wie bisher nur über Ingress erreichbar.
+
 ## 1.2.1 – 2026-09-28
 
 - Behoben: Nach dem Zurückschalten von einem festen Modus (Sommer oder Heizperiode) auf Automatik hielt die Automatik im Übergangsbereich den Zustand des festen Modus fest; die Freigabe blieb z. B. nach „Sommer → Automatik“ trotz kühler Tage aus. Die letzte Entscheidung der Automatik wird jetzt getrennt gespeichert und von festen Modi nicht verändert. Im Übergangsbereich gilt sie, wenn sie höchstens 14 Tage alt ist; sonst entscheidet das jüngste abgeschlossene Tagesmittel (unter Heizgrenze plus halbe Hysterese = Heizperiode, sonst Sommer), ohne Daten gilt Heizperiode. Der aktuelle Zustand der Freigabe und feste Modi zählen im Übergangsbereich nicht mehr. Beim Wechsel auf Automatik wird das Ergebnis sofort angewendet. Gilt für beide Betriebsarten.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -35,6 +36,9 @@ _LOGGER = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 INGRESS_IP = "172.30.32.2"
+# Internes Netz der Apps: Von hier darf PM Panel Studio mit dem Panel-Schlüssel zugreifen (Kopfzeile unten)
+APP_NETZ = ipaddress.ip_network("172.30.32.0/23")
+PANEL_KOPF = "X-PM-Panel-Schluessel"
 INGRESS_PATH_RE = re.compile(r"^/api/hassio_ingress/[A-Za-z0-9_\-]+$")
 ROOM_TTL = 300
 OVERVIEW_TTL = 120
@@ -60,7 +64,9 @@ def allowed_networks() -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
     return nets
 
 
-def make_ingress_filter(networks: list[Any]):
+def make_ingress_filter(networks: list[Any], panel_schluessel: str = ""):
+    """Nur Ingress; mit gesetztem Panel-Schlüssel zusätzlich PM Panel Studio aus dem internen App-Netz."""
+
     @web.middleware
     async def ingress_filter(request: web.Request, handler):
         remote = request.remote or ""
@@ -68,7 +74,10 @@ def make_ingress_filter(networks: list[Any]):
             addr = ipaddress.ip_address(remote)
         except ValueError:
             addr = None
-        if addr is None or not any(addr in net for net in networks):
+        erlaubt = addr is not None and any(addr in net for net in networks)
+        if not erlaubt and panel_schluessel and addr is not None and addr in APP_NETZ:
+            erlaubt = hmac.compare_digest(request.headers.get(PANEL_KOPF, ""), panel_schluessel)
+        if not erlaubt:
             _LOGGER.warning("Zugriff von %s abgewiesen (nur Ingress erlaubt)", remote)
             raise web.HTTPForbidden(text="Nur über Home-Assistant-Ingress erreichbar.")
         return await handler(request)
@@ -622,7 +631,7 @@ async def api_ereignisse(request: web.Request) -> web.Response:
 
 def create_app(ks: KlimaStudio, networks: list[Any] | None = None) -> web.Application:
     app = web.Application(
-        middlewares=[make_ingress_filter(networks or allowed_networks()), security_headers, error_json],
+        middlewares=[make_ingress_filter(networks or allowed_networks(), ks.opts.panel_schluessel), security_headers, error_json],
         client_max_size=512 * 1024,
     )
     app[K_APP] = ks
