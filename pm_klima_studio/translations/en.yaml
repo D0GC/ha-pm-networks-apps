@@ -63,6 +63,10 @@ configuration:
     name: Weather forecast
     description: >-
       weather entity used for the forecast in the climate coach. Default weather.dwd_zuhause.
+  panel_schluessel:
+    name: Key for PM Panel Studio
+    description: >-
+      Optional, at least 16 characters. The same value in PM Panel Studio (option klima_studio_schluessel) embeds Klima Studio in the wall panel. Leave empty to keep Klima Studio reachable via the sidebar only.
   log_level:
     name: Log level
     description: debug, info, warning or error.

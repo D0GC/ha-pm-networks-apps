@@ -446,3 +446,42 @@ def test_history_cache_default_size():
     from klimastudio.data import HistoryCache
 
     assert HistoryCache().max_entries == 800
+
+
+async def test_panel_schluessel():
+    """Mit Panel-Schlüssel: internes App-Netz nur mit passendem Schlüssel; ohne Option nur Ingress."""
+    from aiohttp import web
+
+    from klimastudio.server import make_ingress_filter
+
+    netze = [ipaddress.ip_network("172.30.32.2/32")]
+    schluessel = "geheim-geheim-geheim"
+
+    class Anfrage:
+        def __init__(self, remote, kopf):
+            self.remote = remote
+            self.headers = kopf
+
+    filt = make_ingress_filter(netze, schluessel)
+
+    async def handler(_r):
+        return "durch"
+
+    assert await filt(Anfrage("172.30.33.8", {"X-PM-Panel-Schluessel": schluessel}), handler) == "durch"
+    for remote, kopf in (
+        ("172.30.33.8", {"X-PM-Panel-Schluessel": "falsch"}),
+        ("172.30.33.8", {}),
+        ("192.168.1.10", {"X-PM-Panel-Schluessel": schluessel}),
+    ):
+        try:
+            await filt(Anfrage(remote, kopf), handler)
+        except web.HTTPForbidden:
+            continue
+        raise AssertionError(remote)
+    ohne = make_ingress_filter(netze, "")
+    try:
+        await ohne(Anfrage("172.30.33.8", {"X-PM-Panel-Schluessel": schluessel}), handler)
+    except web.HTTPForbidden:
+        pass
+    else:
+        raise AssertionError("ohne Option darf nichts durch")

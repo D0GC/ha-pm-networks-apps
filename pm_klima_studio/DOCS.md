@@ -128,6 +128,7 @@ Der Hinweis lässt sich bis zum nächsten Neuladen ausblenden.
 | `coach_ki_entitaet` | `ai_task.claude_ai_task` | beide | KI-Aufgabe für die Analyse im Klima-Coach. Zulässig: `ai_task.*`. |
 | `coach_anwesenheit` | `true` | beide | Personen und Anwesenheit in den Lagebericht für die KI aufnehmen. |
 | `wetter_entitaet` | `weather.dwd_zuhause` | beide | Wettervorhersage für den Klima-Coach. Zulässig: `weather.*`. |
+| `panel_schluessel` | leer | beide | Optional, mindestens 16 Zeichen. Mit demselben Wert in PM Panel Studio (`klima_studio_schluessel`) zeigt das Wandpanel Klima Studio als eigene Seite. Zugelassen sind dann zusätzlich Anfragen aus dem internen App-Netz von Home Assistant (172.30.32.0/23), die diesen Schlüssel mitsenden. |
 | `log_level` | `info` | beide | Protokollstufe: `debug`, `info`, `warning` oder `error`. |
 
 Ungültige Werte ersetzt Klima Studio durch den Standard und schreibt eine Warnung in das Protokoll der App.

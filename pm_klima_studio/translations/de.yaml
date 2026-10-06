@@ -65,6 +65,10 @@ configuration:
     name: Wettervorhersage
     description: >-
       weather-Entität für die Vorhersage im Klima-Coach. Standard weather.dwd_zuhause.
+  panel_schluessel:
+    name: Schlüssel für PM Panel Studio
+    description: >-
+      Optional, mindestens 16 Zeichen. Derselbe Wert in PM Panel Studio (Option klima_studio_schluessel) bindet Klima Studio in das Wandpanel ein. Leer lassen, wenn Klima Studio nur über die Seitenleiste erreichbar sein soll.
   log_level:
     name: Protokollstufe
     description: debug, info, warning oder error.
