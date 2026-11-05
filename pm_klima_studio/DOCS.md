@@ -6,6 +6,8 @@ Klima Studio plant, steuert und wertet das Raumklima in Home Assistant aus: Heiz
 Steuerung je Raum, Heizperiode und Sommerbetrieb, Auswertungen, ein lokaler Klima-Coach mit optionaler KI-Analyse
 und ein Wochenbericht.
 
+Produktseite, Neuigkeiten und Kontakt: <https://pm-networks.com/produkte/klima-studio/>
+
 Die ausführliche Anleitung mit Screenshots finden Sie auch auf GitHub:
 <https://github.com/D0GC/ha-pm-networks-apps/blob/main/docs/ANLEITUNG.md>
 

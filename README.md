@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="docs/images/banner.png" alt="PM Klima Studio – Heizpläne, Steuerung, Auswertungen und Klima-Coach für Home Assistant" width="100%">
+  <a href="https://pm-networks.com/produkte/klima-studio/"><img src="docs/images/banner.png" alt="PM Klima Studio – Heizpläne, Steuerung, Auswertungen und Klima-Coach für Home Assistant" width="100%"></a>
 </p>
 
 <p align="center">
+  <a href="https://pm-networks.com"><img src="https://img.shields.io/badge/Website-pm--networks.com-784295?style=flat-square" alt="Website pm-networks.com"></a>
   <a href="pm_klima_studio/CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.2.1-784295?style=flat-square" alt="Version 1.2.1"></a>
   <img src="https://img.shields.io/badge/Home%20Assistant-%E2%89%A5%202026.9-443171?style=flat-square&logo=homeassistant&logoColor=white" alt="Home Assistant ab 2026.9">
   <img src="https://img.shields.io/badge/Architektur-aarch64%20%7C%20amd64-262252?style=flat-square" alt="Architekturen aarch64 und amd64">
@@ -21,6 +22,8 @@ gibt mit dem Klima-Coach konkrete Hinweise. Einmal pro Woche fasst ein Bericht a
 
 Klima Studio arbeitet mit der Integration **PM Klima** oder, in der Betriebsart **Generisch**, mit beliebigen
 Thermostaten in Home Assistant.
+
+> **Produktseite, Neuigkeiten und Kontakt:** [pm-networks.com/produkte/klima-studio](https://pm-networks.com/produkte/klima-studio/)
 
 ![Klima Studio auf Desktop und Smartphone](docs/images/titelbild.webp)
 
@@ -125,4 +128,4 @@ ausschließen.
 
 MIT, siehe [LICENSE](LICENSE). Die Schrift Montserrat steht unter der SIL Open Font License 1.1.
 
-<p align="center"><sub>© 2026 PM Networks</sub></p>
+<p align="center"><a href="https://pm-networks.com"><b>pm-networks.com</b></a> · <sub>© 2026 PM Networks</sub></p>

@@ -1,5 +1,7 @@
 # PM Klima Studio
 
+**Produktseite:** [pm-networks.com/produkte/klima-studio](https://pm-networks.com/produkte/klima-studio/)
+
 Heizpläne, Steuerung, Auswertungen und Klima-Coach für Home Assistant. Mit der Integration **PM Klima**
 (Betriebsart `pm_networks`) oder mit beliebigen Thermostaten (Betriebsart `generisch`).
 
@@ -21,4 +23,4 @@ Architekturen: `aarch64`, `amd64`. Aufruf über die Seitenleiste „Klima Studio
 Einzelheiten stehen im Reiter **Dokumentation** der App und in der
 [Anleitung mit Screenshots](https://github.com/D0GC/ha-pm-networks-apps/blob/main/docs/ANLEITUNG.md).
 
-© 2026 PM Networks
+© 2026 PM Networks · [pm-networks.com](https://pm-networks.com)
